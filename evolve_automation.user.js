@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Evolve
+// @name         Evolve test
 // @namespace    http://tampermonkey.net/
 // @version      3.3.1.58
 // @description  try to take over the world!
@@ -2275,6 +2275,11 @@
           (building) => !building.is.housing && !building.is.garrison && resourceCost(building, resources.Knowledge) <= 0,
           () => "Awaiting MAD prestige",
           () => settings.buildingWeightingMADUseless
+      ],[
+          () => settings.buildPopulation,
+          (building) => !building.is.housing && !building.is.garrison && resourceCost(building, resources.Knowledge) <= 0,
+          () => "Building population",
+          () => 0
       ],[
           () => true,
           (building) => building !== buildings.ForgeHorseshoe && building !== buildings.RedForgeHorseshoe && building.count === 0,
@@ -4598,6 +4603,7 @@
         settings.prestigeMADIgnoreArpa = true;
         settings.prestigeMADWait = true;
         settings.prestigeMADPopulation = 1;
+        settings.buildPopulation = false;
         settings.prestigeWaitAT = true;
         settings.prestigeBioseedConstruct = true;
         settings.prestigeEnabledBarracks = 100;
@@ -5468,6 +5474,7 @@
         addSetting("prestigeMADWait", true);
         addSetting("prestigeMADPopulation", 1);
         addSetting("prestigeWaitAT", true);
+        addSetting("buildPopulation", false);
         addSetting("prestigeBioseedConstruct", true);
         addSetting("prestigeEnabledBarracks", 100);
         addSetting("prestigeBioseedProbes", 3);
@@ -10584,6 +10591,7 @@
             updateSettingsFromState();
         });
 
+        addSettingsToggle(currentNode, "buildPopulation", "Build only population buildings");
         addSettingsToggle(currentNode, "prestigeWaitAT", "Use all Accelerated Time", "Delay reset until all accelerated time will be used");
         addSettingsToggle(currentNode, "prestigeBioseedConstruct", "Ignore useless buildings", "Space Dock, Bioseeder Ship and Probes will be constructed only when Bioseed prestige enabled. World Collider won't be constructed during Bioseed. Jump Ship won't be constructed during Whitehole. Stellar Engine won't be constucted during Vacuum Collapse.");
         addSettingsNumber(currentNode, "prestigeEnabledBarracks", "Barracks after unification", "Percent of barracks to keep enabled after unification, disabling some of them can reduce stress. All barracks will be enabled back when Bioseeder Ship will be at 90%, or after building World Collider");
