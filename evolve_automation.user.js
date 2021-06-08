@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve test
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.60
+// @version      3.3.1.62
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/elias098/cc891c9c4bdc6276a8dfa4d346d92c30/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -732,12 +732,13 @@
         }
 
         get title() {
-            if (this.definition !== undefined) {
-                return typeof this.definition.title === 'string' ? this.definition.title : this.definition.title();
-            }
+            let def = this.definition;
+            return def ? typeof def.title === 'string' ? def.title : def.title() : this.name;
+        }
 
-            // There is no definition...
-            return this.name;
+        get desc() {
+            let def = this.definition;
+            return def ? typeof def.desc === 'string' ? def.desc : def.desc() : this.name;
         }
 
         get vue() {
@@ -839,7 +840,11 @@
             }
 
             resetMultiplier();
+
+            $('#popper').attr('id', 'TotallyNotAPopper'); // Hide active popper from action, so it won't rewrite it
             this.vue.action();
+            $('#TotallyNotAPopper').attr('id', 'popper');
+
             return true;
         }
 
@@ -2917,11 +2922,8 @@
 
         setGovernmentCallback() {
             if (GovernmentManager._governmentToSet !== null) {
-                // The government modal window does some tricky stuff when selecting a government.
-                // It removes and destroys popups so we have to have a popup there for it to destroy!
                 let button = document.querySelector(`#govModal [data-gov="${GovernmentManager._governmentToSet}"]`);
                 if (button) {
-                    button.dispatchEvent(new MouseEvent("mouseover"));
                     GameLog.logSuccess(GameLog.Types.special, `Revolution! Government changed to ${game.loc("govern_" + GovernmentManager._governmentToSet)}.`);
                     logClick(button, "set government");
                 }
@@ -3313,11 +3315,8 @@
 
         performEspionageCallback() {
             if (SpyManager._espionageToPerform !== null) {
-                // The espionage modal window does some tricky stuff when selecting a mission.
-                // It removes and destroys popups so we have to have a popup there for it to destroy!
                 let button = document.querySelector(`#espModal [data-esp="${SpyManager._espionageToPerform}"]`);
                 if (button) {
-                    button.dispatchEvent(new MouseEvent("mouseover"));
                     logClick(button, "perform espionage");
                 }
                 SpyManager._espionageToPerform = null;
@@ -4745,7 +4744,6 @@
         JobManager.addJobToPriorityList(jobs.Hunter);
         JobManager.addJobToPriorityList(jobs.Farmer);
         //JobManager.addJobToPriorityList(jobs.Forager);
-        JobManager.addJobToPriorityList(jobs.Miner);
         JobManager.addJobToPriorityList(jobs.Lumberjack);
         JobManager.addJobToPriorityList(jobs.QuarryWorker);
         JobManager.addJobToPriorityList(jobs.CrystalMiner);
@@ -4758,6 +4756,7 @@
         JobManager.addJobToPriorityList(jobs.HellSurveyor);
         JobManager.addJobToPriorityList(jobs.SpaceMiner);
         JobManager.addJobToPriorityList(jobs.Archaeologist);
+        JobManager.addJobToPriorityList(jobs.Miner);
         JobManager.addJobToPriorityList(jobs.CoalMiner);
         JobManager.addJobToPriorityList(jobs.Banker);
         JobManager.addJobToPriorityList(jobs.Priest);
@@ -6011,11 +6010,8 @@
                                    (planetBiomes.indexOf(b.biome) + planetTraits.indexOf(b.trait)));
         }
 
-        // This one is a little bit special. We need to trigger the "mouseover" first as it creates a global javascript varaible
-        // that is then destroyed in the "click"
         let selectedPlanet = document.getElementById(planets[0].id);
         if (selectedPlanet) {
-            selectedPlanet.dispatchEvent(new MouseEvent("mouseover"));
             logClick(selectedPlanet.children[0], "select planet");
         }
     }
@@ -7863,9 +7859,6 @@
             let building = state.triggerTargets[i];
             if (building instanceof Action && building.isClickable()) {
                 building.click();
-                if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
-                    removePoppers();
-                }
                 if (building.consumption.length > 0) {
                     return;
                 }
@@ -7982,9 +7975,6 @@
 
             // Build building
             if (building.click()) {
-                if (building._tab === "space" || building._tab === "interstellar" || building._tab === "portal") {
-                    removePoppers();
-                }
                 if (building.consumption.length > 0) { // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
                     return;
                 }
@@ -8073,7 +8063,6 @@
             let tech = state.triggerTargets[i];
             if (tech instanceof Technology && tech.isClickable()) {
                 tech.click();
-                removePoppers();
                 return;
             }
         }
@@ -8082,7 +8071,6 @@
             let itemId = items[i].id;
             if (isTechAllowed(itemId) && !getCostConflict(techIds[itemId]) && techIds[itemId].click()) {
                 BuildingManager.updateBuildings(); // Cache cost if we just unlocked some building
-                removePoppers();
                 return;
             }
         }
@@ -9786,20 +9774,21 @@
             return;
         }
         mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
-            if (node.childElementCount === 0) { // Descriptions tooltip
-                return;
-            }
-            let obj = null;
-            if (node.id.match(/^poppopArpa/)) { // "poppopArpa[id-with-no-tab]" for projects
-                obj = arpaIds["arpa" + node.id.substr(10)];
-            } else if (node.id.match(/\d$/)) { // "popq[id][order]" for buildings in queue
-                let id = node.id.substr(4, node.id.length-5);
-                obj = buildingIds[id] || arpaIds[id];
-            } else { // "pop[id]" for normal buildings
-                obj = buildingIds[node.id.substr(3)];
-            }
-            if (obj && obj.extraDescription !== "") {
-                node.innerHTML += `<div>${obj.extraDescription}</div>`;
+            if (node.classList.contains('popper')) {
+                if (node.innerHTML.startsWith('<div>')) {
+                    for (let building of Object.values(buildings)){
+                        if (building.isUnlocked() && node.innerHTML.startsWith('<div>' + building.desc)){
+                            node.innerHTML += `<div>${building.extraDescription}</div>`;
+                            return;
+                        }
+                    }
+                }
+                for (let project of Object.values(projects)){
+                    if (node.innerHTML.startsWith(project.desc)){
+                        node.innerHTML += `<div style="border-top: solid .0625rem #999">${project.extraDescription}</div>`;
+                        return;
+                    }
+                }
             }
         }));
     }
@@ -10125,7 +10114,6 @@
             /* Fixes for game styles */
             #powerStatus { white-space: nowrap; }
             .barracks { white-space: nowrap; }
-            .popper { pointer-events: none }
             .area { width: calc(100% / 6) !important; max-width: 8rem; }
             .offer-item { width: 15% !important; max-width: 7.5rem; }
             .tradeTotal { margin-left: 11.5rem !important; }
@@ -13713,14 +13701,6 @@
 
     function getRatingForAdvantage(adv, tactic, govIndex) {
         return getGovArmy(tactic, govIndex) / (1 - (adv/100));
-    }
-
-    function removePoppers() {
-        let poppers = document.querySelectorAll('[id^="pop"]'); // popspace_ and // popspc
-
-        for (let i = 0; i < poppers.length; i++) {
-            poppers[i].remove();
-        }
     }
 
     function getVueById(elementId) {
