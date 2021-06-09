@@ -6765,6 +6765,25 @@
                     }
                 }
 
+                if (job === jobs.Entertainer) {
+                    let entertainerMoraleEach = game.global.race['musical'] ? game.global.tech['theatre'] + 1 : game.global.tech['theatre'];
+                    let entertainerMorale = game.global.city.morale.entertain;
+
+                    let currentTaxRate = game.global.civic.taxes.tax_rate;
+                    let realMorale = game.global.city.morale.potential;
+                    let maxMorale = game.global.city.morale.cap;
+
+                    let maxTaxRate = poly.taxCap(false);
+                    let minTaxRate = poly.taxCap(true);
+                    if (resources.Money.storageRatio < 0.9) {
+                        minTaxRate = Math.max(minTaxRate, settings.generalMinimumTaxRate);
+                    }
+
+                    if (!settings.autoTax || !haveTech("superstars") && (currentTaxRate === maxTaxRate || currentTaxRate === minTaxRate) && realMorale > maxMorale - entertainerMoraleEach) {
+                        jobsToAssign = Math.min(jobsToAssign, Math.ceil((maxMorale - (realMorale - entertainerMorale)) / entertainerMoraleEach));
+                    }
+                }
+
                 jobsToAssign = Math.max(0, jobsToAssign);
                 requiredJobs[j] = jobsToAssign;
                 jobAdjustments[j] = jobsToAssign - job.count;
