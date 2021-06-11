@@ -9870,12 +9870,12 @@
                     + buildings.Library.count * (haveTech('science', 4) ? 0.02 : 0)
                     + buildings.MoonObservatory.stateOnCount * 0.05
                     + (haveTech('science', 14) ? buildings.BadlandsSensorDrone.stateOnCount * 0.02 : 0));
-console.log(gain);
+
             if (game.global.race['cataclysm']) {
                 gain += 0.25 * parseFloat(game.breakdown.c.Knowledge[game.loc('tech_exotic_bd')] ?? 0) / (1
                     + buildings.MoonObservatory.stateOnCount * 0.25);
             }
-console.log(gain);
+
             gain *= getWorldColliderMulti();
 
             description += `+${Math.round(gain)} Max Knowledge`;
