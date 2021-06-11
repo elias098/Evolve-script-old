@@ -8340,7 +8340,7 @@
             building.tryAdjustState(maxStateOn - currentStateOn);
 
             if (building === buildings.NeutronCitadel) {
-                building.extraDescription = `Next level will increase total consumption by ${getCitadelConsumption(maxStateOn+1) - getCitadelConsumption(maxStateOn)} MW<br>${building.extraDescription}`;
+                //building.extraDescription = `Next level will increase total consumption by ${getCitadelConsumption(maxStateOn+1) - getCitadelConsumption(maxStateOn)} MW<br>${building.extraDescription}`;
                 availablePower -= getCitadelConsumption(maxStateOn);
             } else {
                 availablePower -= building.powered * maxStateOn;
@@ -9785,6 +9785,105 @@
         }));
     }
 
+    function getWorldColliderMulti() {
+        let boost = 0
+
+        if (buildings.DwarfWorldController.stateOnCount) {
+            boost = 0.25;
+            boost += buildings.BlackholeFarReach.stateOnCount * 0.01;
+            boost += haveTech('science', 19) ? 0.15 : 0;
+        }
+
+        return 1 + boost;
+    }
+
+    function wardenLabel() {
+        if (game.global.race.universe === 'magic') {
+            return game.loc('city_wizard_tower_title');
+        } else {
+            return game.global.race['evil'] ? game.loc('city_babel_title') : game.loc('city_wardenclyffe');
+        }
+    }
+
+    function calculateTooltipInfo(building) {
+        let description = "";
+
+        if (building === buildings.NeutronCitadel) {
+            building.extraDescription = `Next level will increase total consumption by ${getCitadelConsumption(maxStateOn+1) - getCitadelConsumption(maxStateOn)} MW<br>${building.extraDescription}`;
+        }
+
+
+
+        if (building === buildings.Library) {
+            let gain = 0;
+
+            if (buildings.Library.count === 0) {
+                gain += game.actions.city.library.effect().match(/[0-9]+/)[0];
+            } else {
+                gain += parseFloat(game.breakdown.c.Knowledge[game.loc('city_library')]) / buildings.Library.count;
+            }
+
+            if (haveTech('science', 4)) {
+                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[game.loc('city_university')] ?? 0) / (1
+                    + buildings.Library.count * 0.02
+                    + buildings.MoonObservatory.stateOnCount * 0.05
+                    + (haveTech('science', 14) ? buildings.BadlandsSensorDrone.stateOnCount * 0.02 : 0));
+            }
+
+            gain *= getWorldColliderMulti();
+
+            description += `+${Math.round(gain)} Max Knowledge`;
+        }
+
+
+
+        if (building === buildings.SpaceSatellite) {
+            let gain = 0;
+
+            if (buildings.SpaceSatellite.count === 0) {
+                gain += game.actions.space.spc_home.satellite.effect().match(/[0-9]+/)[0];
+            } else {
+                gain += parseFloat(game.breakdown.c.Knowledge[game.loc('space_home_satellite_title')]) / buildings.SpaceSatellite.count;
+            }
+
+            gain += 0.04 * parseFloat(game.breakdown.c.Knowledge[wardenLabel()] ?? 0) / (1
+                + buildings.SpaceSatellite.count * 0.04);
+
+
+            gain *= getWorldColliderMulti();
+
+            description += `+${Math.round(gain)} Max Knowledge`;
+        }
+
+
+
+        if (building === buildings.MoonObservatory) {
+            let gain = 0;
+
+            if (buildings.MoonObservatory.count === 0) {
+                gain += game.actions.space.spc_moon.observatory.effect().match(/[0-9]+/)[0];
+            } else {
+                gain += parseFloat(game.breakdown.c.Knowledge[game.loc('space_moon_observatory_title')]) / buildings.MoonObservatory.stateOnCount;
+            }
+
+            gain += 0.05 * parseFloat(game.breakdown.c.Knowledge[game.loc('city_university')] ?? 0) / (1
+                    + buildings.Library.count * (haveTech('science', 4) ? 0.02 : 0)
+                    + buildings.MoonObservatory.stateOnCount * 0.05
+                    + (haveTech('science', 14) ? buildings.BadlandsSensorDrone.stateOnCount * 0.02 : 0));
+console.log(gain);
+            if (game.global.race['cataclysm']) {
+                gain += 0.25 * parseFloat(game.breakdown.c.Knowledge[game.loc('tech_exotic_bd')] ?? 0) / (1
+                    + buildings.MoonObservatory.stateOnCount * 0.25);
+            }
+console.log(gain);
+            gain *= getWorldColliderMulti();
+
+            description += `+${Math.round(gain)} Max Knowledge`;
+        }
+
+        return `${description}<br>${building.extraDescription}`;
+    }
+
     function addTooltip(mutations) {
         if (!settings.masterScriptToggle) {
             return;
@@ -9794,7 +9893,7 @@
                 if (node.innerHTML.startsWith('<div>')) {
                     for (let building of Object.values(buildings)){
                         if (building.isUnlocked() && node.innerHTML.startsWith('<div>' + building.desc)){
-                            node.innerHTML += `<div>${building.extraDescription}</div>`;
+                            node.innerHTML += `<div>${calculateTooltipInfo(building)}</div>`;
                             return;
                         }
                     }
