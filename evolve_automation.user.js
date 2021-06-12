@@ -9917,9 +9917,6 @@
                     obj = buildingIds[dataId];
                 }
 
-                if (obj && obj.extraDescription !== "") {
-                    node.innerHTML += `<div style="border-top: solid .0625rem #999">${obj.extraDescription}</div>`;
-                }
                 if (obj) {
                     let note = calculateTooltipInfo(obj) + obj.extraDescription; 
                     if (note !== "") {
