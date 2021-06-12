@@ -6288,7 +6288,7 @@
             return;
         }
 
-        let bestAttackRating = game.armyRating(m.currentCityGarrison - m.wounded, "army");
+        let bestAttackRating = game.armyRating(m.currentCityGarrison, "army", "0");
         let requiredTactic = 0;
 
         let [rank, subdued, attackIndex] = findAttackTarget();
@@ -6346,6 +6346,9 @@
 
         minSoldiers = minSoldiers ?? m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMinAdvantage, requiredTactic, attackIndex));
         maxSoldiers = maxSoldiers ?? m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex));
+        if (m.wounded > 1 && m.currentCityGarrison - m.wounded < maxSoldiers) {
+            return;
+        }
 
         // Max soldiers advantage should be above our max. Let's tune it down to stay in prefered range, if we can
         if (maxSoldiers > minSoldiers) {
