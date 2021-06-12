@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve test
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.63
+// @version      3.3.1.64
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/elias098/cc891c9c4bdc6276a8dfa4d346d92c30/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -742,29 +742,6 @@
             return def ? typeof def.desc === 'function' ? def.desc() : def.desc : this.name;
         }
 
-        matchTooltip(tooltip) {
-            let def = this.definition;
-            if (!def) {
-                return false;
-            }
-
-            // First check with no escaping, to make it faster; it seems to work for all buildings currently in game
-            if (!tooltip.startsWith('<div>' + (typeof def.desc === 'function' ? def.desc() : def.desc))) {
-                return false;
-            }
-
-            // Make sure it's actually our tooltip, with only desc there will be collisions between buildings and their techs
-            if (def.effect && tooltip.indexOf($(`<div>${typeof def.effect === 'function' ? def.effect() : def.effect}</div>`).html()) === -1) {
-                return false;
-            }
-
-            // Just in case
-            if (def.flair && tooltip.indexOf($(`<div>${typeof def.flair === 'function' ? def.flair() : def.flair}</div>`).html()) === -1) {
-                return false;
-            }
-            return true;
-        }
-
         get vue() {
             return getVueById(this._vueBinding);
         }
@@ -871,7 +848,7 @@
 
             // Hide active popper from action, so it won't rewrite it
             let popper = $('#popper');
-            if (popper.length > 0 && !this.matchTooltip(popper.html())) {
+            if (popper.length > 0 && popper.data('id').indexOf(this._vueBinding) === -1) {
                 popper.attr('id', 'TotallyNotAPopper');
                 this.vue.action();
                 popper.attr('id', 'popper');
@@ -1015,6 +992,13 @@
                 }
                 return true;
             }
+        }
+    }
+
+    class EvolutionAction extends Action {
+        isUnlocked() {
+            let node = document.getElementById(this._vueBinding);
+            return node !== null && !node.classList.contains('is-hidden');
         }
     }
 
@@ -1564,25 +1548,28 @@
 
     // Biomes and traits sorted by habitability
     const planetBiomes = ["oceanic", "forest", "grassland", "desert", "volcanic", "tundra", "eden", "hellscape"];
-    const planetTraits = ["magnetic", "none", "rage", "elliptical", "stormy", "toxic", "ozone", "mellow", "trashed", "flare", "unstable", "dense"];
+    const planetTraits = ["magnetic", "elliptical", "none", "rage", "stormy", "toxic", "ozone", "trashed", "dense", "unstable", "mellow", "flare"];
     const planetBiomeGenus = {hellscape: "demonic", eden: "angelic", oceanic: "aquatic", forest: "fey", desert: "sand", volcanic: "heat", tundra: "polar"};
 
-    const challenges = {
-        mastery: "weak_mastery",
-        plasmid: "no_plasmid",
-        trade: "no_trade",
-        craft: "no_craft",
-        crispr: "no_crispr",
-        joyless: "joyless",
-        steelen: "steelen",
-        decay: "decay",
-        emfield: "emfield",
-        junker: "junker",
-        cataclysm: "cataclysm",
-        banana: "banana",
-    };
+    const challenges = [
+        [{id:"plasmid", trait:"no_plasmid"},
+         {id:"mastery", trait:"weak_mastery"},
+       /*{id:"nerfed", trait:"nerfed"}*/],
+        [{id:"crispr", trait:"no_crispr"},
+       /*{id:"badgenes", trait:"badgenes"}*/],
+        [{id:"trade", trait:"no_trade"}],
+        [{id:"craft", trait:"no_craft"}],
+        [{id:"joyless", trait:"joyless"}],
+        [{id:"steelen", trait:"steelen"}],
+        [{id:"decay", trait:"decay"}],
+        [{id:"emfield", trait:"emfield"}],
+        [{id:"junker", trait:"junker"}],
+        [{id:"cataclysm", trait:"cataclysm"}],
+        [{id:"banana", trait:"banana"}],
+      //[{id:"truepath", trait:"truepath"}],
+    ];
     const governors = ["soldier", "criminal", "entrepreneur", "educator", "spiritual", "bluecollar", "noble", "media", "sports", "bureaucrat"];
-    const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...Object.keys(challenges).map(id => "challenge_" + id)];
+    const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...challenges.map(c => "challenge_" + c[0].id)];
     const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", ascension: "Ascension", demonic: "Infusion"};
     const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
@@ -3665,9 +3652,12 @@
         _listVueBinding: "mechList",
         _listVue: undefined,
 
-        collectorValue: 200000, // Collector power mod. Higher number - more often they'll be scrapped
+        collectorValue: 150000, // Collector power mod. Higher number - more often they'll be scrapped
 
+        // TODO: We can't scrap old and build new mech in same tick due to vue bug, that's a workaround for it. Remove once fixed.
+        nextMech: null,
         spaceUsed: 0,
+
         activeMechs: [],
         inactiveMechs: [],
         mechsPower: 0,
@@ -3748,6 +3738,7 @@
                 this.lastLevel = game.global.portal.spire.count;
                 this.lastPrepared = game.global.blood.prepared;
                 this.lastSpecial = settings.mechSpecial;
+                this.nextMech = null;
 
                 this.updateBestWeapon();
                 this.Size.forEach(size => {
@@ -4539,7 +4530,7 @@
 
     function initialiseRaces() {
         for (let id in game.actions.evolution) {
-            evolutions[id] = new Action("", "evolution", id, "");
+            evolutions[id] = new EvolutionAction("", "evolution", id, "");
         }
         let e = evolutions;
 
@@ -4682,8 +4673,8 @@
         settings.evolutionQueueEnabled = false;
         settings.evolutionQueueRepeat = false;
         settings.evolutionBackup = false;
-        for (let id in challenges) {
-            settings["challenge_" + id] = false;
+        for (let i = 0; i < challenges.length; i++) {
+            settings["challenge_" + challenges[i][0].id] = false;
         }
     }
 
@@ -5597,7 +5588,9 @@
         addSetting("userPlanetTargetName", "none");
         addSetting("userEvolutionTarget", "auto");
 
-        Object.values(challenges).forEach(id => addSetting("challenge_" + id, false));
+        for (let i = 0; i < challenges.length; i++) {
+            addSetting("challenge_" + challenges[i][0].id, false)
+        }
 
         addSetting("userResearchTheology_1", "auto");
         addSetting("userResearchTheology_2", "auto");
@@ -5650,6 +5643,7 @@
         addSetting("fleetChthonianPower", 4500);
 
         addSetting("mechScrap", "mixed");
+        addSetting("mechScrapEfficiency", 2);
         addSetting("mechBuild", "random");
         addSetting("mechSize", "auto");
         addSetting("mechSizeGravity", "auto");
@@ -5666,32 +5660,20 @@
         extraList.forEach(id => addSetting("extra_w_" + id, 0));
 
         // TODO: Remove me some day. Cleaning up old settings.
-        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter"].forEach(id => delete settings[id]);
+        settings.challenge_plasmid = settings.challenge_mastery || settings.challenge_plasmid; // Merge challenge settings
+        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery"].forEach(id => delete settings[id]);
         ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settings[id + index]));
         Object.values(resources).forEach(resource => delete settings['res_storage_w_' + resource.id]);
         Object.values(projects).forEach(project => delete settings['arpa_ignore_money_' + project.id]);
         Object.values(buildings).filter(building => !building.isSwitchable()).forEach(building => delete settings['bld_s_' + building._vueBinding]);
     }
 
-    function getConfiguredAchievementLevel() {
+    function getAchievementLevel(context) {
         let a_level = 1;
-        if (game.global.race.universe === 'antimatter') {
-            if (settings.challenge_mastery) { a_level++; }
-        } else {
-            if (settings.challenge_plasmid) { a_level++; }
-        }
-        if (settings.challenge_trade) { a_level++; }
-        if (settings.challenge_craft) { a_level++; }
-        if (settings.challenge_crispr) { a_level++; }
-        return a_level;
-    }
-
-    function getQueueAchievementLevel(queue) {
-        let a_level = 1;
-        if (queue.challenge_plasmid || queue.challenge_mastery) { a_level++; }
-        if (queue.challenge_trade) { a_level++; }
-        if (queue.challenge_craft) { a_level++; }
-        if (queue.challenge_crispr) { a_level++; }
+        if (context.challenge_plasmid) { a_level++; }
+        if (context.challenge_trade) { a_level++; }
+        if (context.challenge_craft) { a_level++; }
+        if (context.challenge_crispr) { a_level++; }
         return a_level;
     }
 
@@ -5757,7 +5739,7 @@
             // Try to pick race for achievement first
             if (settings.userEvolutionTarget === "auto") {
                 // Determine star level based on selected challenges and use it to check if achievements for that level have been... achieved
-                let achievementLevel = getConfiguredAchievementLevel();
+                let achievementLevel = getAchievementLevel(settings);
                 let targetedGroup = {race: null, remainingPercent: 0};
 
                 let genusGroups = {};
@@ -5846,10 +5828,13 @@
         }
 
         // Apply challenges
-        for (let [id, trait] of Object.entries(challenges)) {
-            if (settings["challenge_" + id] && (!game.global.race[trait] || game.global.race[trait] !== 1)) {
-                if (evolutions[id].click() && id === "junker") {
-                    return;
+        for (let i = 0; i < challenges.length; i++) {
+            if (settings["challenge_" + challenges[i][0].id]) {
+                for (let j = 0; j < challenges[i].length; j++) {
+                    let {id, trait} = challenges[i][j];
+                    if (game.global.race[trait] !== 1 && evolutions[id].click() && id === "junker") {
+                        return; // Give game time to update state after activating junker
+                    }
                 }
             }
         }
@@ -5893,7 +5878,8 @@
             let action = state.evolutionTarget.evolutionTree[i];
             if (action.isUnlocked()) {
                 // Don't click challenges which already active
-                if (challenges[action.id] && game.global.race[challenges[action.id]]) {
+                let challenge = challenges.flat().find(c => c.id === action.id);
+                if (challenge && game.global.race[challenge.trait]) {
                     continue;
                 }
                 if (action.click()) {
@@ -5996,7 +5982,7 @@
         let planets = generatePlanets();
 
         // Let's try to calculate how many achievements we can get here
-        let alevel = getConfiguredAchievementLevel();
+        let alevel = getAchievementLevel(settings);
         for (let i = 0; i < planets.length; i++){
             let planet = planets[i];
             planet.achieve = 0;
@@ -8071,7 +8057,7 @@
         }
 
         // Unification
-        if (itemId === "tech-unification2" && !settings.foreignUnification) {
+        if ((itemId === "tech-unification2" || itemId === "tech-unite") && !settings.foreignUnification) {
             return false;
         }
 
@@ -8266,7 +8252,8 @@
                 // Disable uselss Guard Post
                 if (building === buildings.RuinsGuardPost) {
                     let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
-                    let postAdjust = Math.max((5000 - poly.hellSupression("ruins").rating) / postRating, (7500 - poly.hellSupression("gate").rating) / postRating);
+                    // 1 extra to workaround rounding errors
+                    let postAdjust = Math.max((5001 - poly.hellSupression("ruins").rating) / postRating, (7501 - poly.hellSupression("gate").rating) / postRating);
                     // We're reserving just one soldier for Guard Posts, so let's increase them by 1
                     maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
                 }
@@ -8398,12 +8385,15 @@
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
             let buildAllowed = (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) / buildings.SpireMechBay.count > 1 || resources.Supply.isCapped());
             const spireBuildable = (building) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money);
+            let mechBuildable = spireBuildable(buildings.SpireMechBay);
+            let puriBuildable = spireBuildable(buildings.SpirePurifier);
+            let portBuildable = spireBuildable(buildings.SpirePort);
+            let campBuildable = spireBuildable(buildings.SpireBaseCamp);
 
-            let nextMechCost = spireBuildable(buildings.SpireMechBay) ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            // We don't need purifiers if mech bay already maxed
-            let nextPuriCost = nextMechCost !== Number.MAX_SAFE_INTEGER && spireBuildable(buildings.SpirePurifier) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let maxPorts = spireBuildable(buildings.SpirePort) ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
-            let maxCamps = spireBuildable(buildings.SpireBaseCamp) ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
+            let nextMechCost = mechBuildable ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextPuriCost = puriBuildable && mechBuildable && (portBuildable || campBuildable) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let maxPorts = portBuildable ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
+            let maxCamps = campBuildable ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
 
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
@@ -9157,7 +9147,8 @@
 
         let newMech = {};
         if (settings.mechBuild === "random") {
-            newMech = m.getRandomMech(m.getPreferedSize());
+            newMech = m.nextMech ?? m.getRandomMech(m.getPreferedSize());
+            m.nextMech = null;
         } else if (settings.mechBuild === "user") {
             newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
         } else { // mechBuild === "none"
@@ -9229,7 +9220,9 @@
                 }
                 let [gemRefund, supplyRefund] = m.getMechRefund(mech);
                 // Collector and scout does not refund gems. Let's pretend they're returning half of gem during filtering
-                return Math.min((gemRefund || 0.5) / newGems, supplyRefund / newSupply) > mech.power / newMech.power;
+                let costRatio = Math.min((gemRefund || 0.5) / newGems, supplyRefund / newSupply);
+                let powerRatio = mech.power / newMech.power;
+                return costRatio / powerRatio > settings.mechScrapEfficiency;
             }).sort((a, b) => a.efficiency - b.efficiency);
 
             // Remove worst mechs untill we have enough room for new mech
@@ -9248,6 +9241,7 @@
                 trashMechs.forEach(mech => m.scrapMech(mech));
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
                 resources.Soul_Gem.currentQuantity += gemsGained;
+                m.nextMech = newMech;
                 return; // Just scrapped something, give game a second to recalculate mechs before buying replacement
             }
             if (trashMechs.reduce((sum, mech) => sum += m.getMechSpace(mech), 0) >= newSpace) {
@@ -9903,7 +9897,7 @@
             description += `+${Math.round(gain)} Max Knowledge`;
         }
 
-        return `${description}<br>${building.extraDescription}`;
+        return `${description}<br>`;
     }
 
     function addTooltip(mutations) {
@@ -9911,19 +9905,25 @@
             return;
         }
         mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
-            if (node.classList.contains('popper')) {
-                if (node.innerHTML.startsWith('<div>')) {
-                    for (let building of Object.values(buildings)){
-                        if (building.isUnlocked() && building.matchTooltip(node.innerHTML)){
-                            node.innerHTML += `<div>${calculateTooltipInfo(building)}</div>`;
-                            return;
-                        }
-                    }
+            if (node.id === "popper") {
+                let dataId = node.dataset.id;
+                let obj = null;
+                if (dataId.match(/^popArpa/)) { // "popArpa[id-with-no-tab]" for projects
+                    obj = arpaIds["arpa" + dataId.substr(7)];
+                } else if (dataId.match(/^q.*\d$/)) { // "q[id][order]" for buildings in queue
+                    let objId = dataId.substr(1, dataId.length-2);
+                    obj = buildingIds[objId] || arpaIds[objId];
+                } else { // "[id]" for normal buildings
+                    obj = buildingIds[dataId];
                 }
-                for (let project of Object.values(projects)){
-                    if (project.isUnlocked() && node.innerHTML.startsWith(project.desc)){
-                        node.innerHTML += `<div style="border-top: solid .0625rem #999">${project.extraDescription}</div>`;
-                        return;
+
+                if (obj && obj.extraDescription !== "") {
+                    node.innerHTML += `<div style="border-top: solid .0625rem #999">${obj.extraDescription}</div>`;
+                }
+                if (obj) {
+                    let note = calculateTooltipInfo(obj) + obj.extraDescription; 
+                    if (note !== "") {
+                        node.innerHTML += `<div style="border-top: solid .0625rem #999">${note}</div>`;
                     }
                 }
             }
@@ -10467,7 +10467,7 @@
     }
 
     function addSettingsNumber(node, settingName, labelText, hintText) {
-        $(`<div style="display: inline-block; width: 90%; text-align: left;">
+        $(`<div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
              <label title="${hintText}" tabindex="0">
                <span>${labelText}</span>
                <input class="script_${settingName}" type="text" style="text-align: right; height: 18px; width: 150px; float: right;" value="${settings[settingName]}"></input>
@@ -10486,7 +10486,8 @@
 
     function addSettingsSelect(node, settingName, labelText, hintText, optionsList) {
         let options = optionsList.map(item => `<option value="${item.val}" title="${item.hint}" ${item.val === settings[settingName] ? "selected" : ""}>${item.label}</option>`).join();
-        $(`<div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
+        return $(`
+           <div style="margin-top: 5px; display: inline-block; width: 90%; text-align: left;">
              <label title="${hintText}" tabindex="0">
                <span>${labelText}</span>
                <select class="script_${settingName}" style="width: 150px; float: right;">
@@ -10758,8 +10759,7 @@
         // Demonic Infusion
         addSettingsHeader1(currentNode, "Demonic Infusion");
         addSettingsNumber(currentNode, "prestigeDemonicFloor", "Minimum spire floor for reset", "Perform reset after climbing up to this spire floor");
-        addSettingsNumber(currentNode, "prestigeDemonicPotential", "Maximum mech potential for reset", "Perform reset only if current mech team potential below given amount. Full bay of best mechs will have `1` potential. This allows to postpone reset while your team is still good, and can clear some floors fast.");
-
+        addSettingsNumber(currentNode, "prestigeDemonicPotential", "Maximum mech potential for reset", "Perform reset only if current mech team potential below given amount. Full bay of best mechs will have `1` potential. This allows to postpone reset if your team is still good after reaching target floor, and can quickly clear another floor");
         addSettingsToggle(currentNode, "prestigeDemonicBomb", "Use Dark Energy Bomb", "Kill Demon Lord with Dark Energy Bomb");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
@@ -10851,12 +10851,8 @@
         // Target evolution
         let raceOptions = [{val: "auto", label: "Auto Achievements", hint: "Picks race with not infused pillar for Ascension, with unearned Greatness achievement for Bioseed, or with unearned Extinction achievement in other cases. Conditional races are prioritized, when available."},
                            ...Object.values(races).map(race => ({val: race.id, label: race.name, hint: race.desc}))];
-        addSettingsSelect(currentNode, "userEvolutionTarget", "Target Race", "Chosen race will be automatically selected during next evolution", raceOptions);
-
-        currentNode.append(`<div><span id="script_race_warning"></span></div>`);
-        updateRaceWarning();
-
-        $("#script_userEvolutionTarget").on('change', function() {
+        addSettingsSelect(currentNode, "userEvolutionTarget", "Target Race", "Chosen race will be automatically selected during next evolution", raceOptions)
+          .on('change', 'select', function() {
             state.evolutionTarget = null;
             updateRaceWarning();
 
@@ -10865,11 +10861,17 @@
             content.style.height = content.offsetHeight + "px"
         });
 
+        currentNode.append(`<div><span id="script_race_warning"></span></div>`);
+        updateRaceWarning();
+
         addSettingsToggle(currentNode, "evolutionBackup", "Soft Reset", "Perform soft resets until you'll get chosen race. Useless after getting mass exintion perk.");
 
         // Challenges
-        for (let id in challenges) {
-            addSettingsToggle(currentNode, `challenge_${id}`, game.loc(`evo_challenge_${id}`), game.loc(`evo_challenge_${id}_effect`));
+        for (let i = 0; i < challenges.length; i++) {
+            let set = challenges[i];
+            addSettingsToggle(currentNode, `challenge_${set[0].id}`,
+              set.map(c => game.loc(`evo_challenge_${c.id}`)).join(" | "),
+              set.map(c => game.loc(`evo_challenge_${c.id}_effect`)).join("&#xA;"));
         }
 
         addStandardHeading(currentNode, "Evolution Queue");
@@ -10959,7 +10961,7 @@
         }
         let star = $("#topBar .flair svg").clone();
         star.removeClass();
-        star.addClass("star" + getQueueAchievementLevel(queuedEvolution));
+        star.addClass("star" + getAchievementLevel(queuedEvolution));
 
         if (queuedEvolution.prestigeType !== "none") {
             if (prestigeNames[queuedEvolution.prestigeType]) {
@@ -10973,7 +10975,7 @@
 
         let queueNode = $(`
           <tr id="script_evolution_${id}" value="${id}" class="script-draggable">
-            <td style="width:25%"><span class="${raceClass}">${raceName}</span> <span class="${prestigeClass}">${prestigeName}</span> ${star.prop('outerHTML') ?? (getQueueAchievementLevel(queuedEvolution)-1) + "*"}</td>
+            <td style="width:25%"><span class="${raceClass}">${raceName}</span> <span class="${prestigeClass}">${prestigeName}</span> ${star.prop('outerHTML') ?? (getAchievementLevel(queuedEvolution)-1) + "*"}</td>
             <td style="width:70%"><textarea class="textarea">${JSON.stringify(queuedEvolution, null, 4)}</textarea></td>
             <td style="width:5%"><a class="button is-dark is-small"><span>X</span></a></td>
           </tr>`);
@@ -11598,10 +11600,9 @@
                               {val: 1250, label: "Ignore casualties", hint: "Launch Chthonian Assault Mission when it can be won with any loses (1250+ total fleet power, many ships will be lost)"},
                               {val: 2500, label: "Lose 2 Frigates", hint: "Not available in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with average loses (2500+ total fleet power, two Frigates will be lost)"},
                               {val: 4500, label: "Lose 1 Frigate", hint: "Not available in Banana Republic challenge. Launch Chthonian Assault Mission when it can be won with minimal loses (4500+ total fleet power, one Frigate will be lost)"}];
-        addSettingsSelect(currentNode, "fleetChthonianPower", "Chthonian Mission", "Assault Chthonian when chosen outcome is achievable", assaultOptions);
-
+        addSettingsSelect(currentNode, "fleetChthonianPower", "Chthonian Mission", "Assault Chthonian when chosen outcome is achievable", assaultOptions)
+          .on('change', 'select', () => settings.fleetChthonianPower = parseInt(settings.fleetChthonianPower));
         // fleetChthonianPower need to be number, not string.
-        $("#script_fleetChthonianPower").on('change', () => settings.fleetChthonianPower = parseInt(settings.fleetChthonianPower));
 
         currentNode.append(`
           <table style="width:100%">
@@ -11680,10 +11681,11 @@
         currentNode.empty().off("*");
 
         let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
-                            {val: "single", label: "Single worst", hint: "Scrap mechs with worst efficiency one by one, when they can be replaced with better ones"},
-                            {val: "all", label: "All inefficient", hint: "Scrap all mechs with bad efficiency, replacing them with good ones, E.g. it will be able to scrap 30 mechs of 10% efficiency, and replace them with 10 mechs of 200% efficiency at once. This option will clear current floor at best possible speed, but if you're climbing spire too fast you may finish current floor before bay will be repopulated with new mechs back to full, and risking to enter next floor with half-empty bay of suboptimal mechs."},
-                            {val: "mixed", label: "Excess inefficient", hint: "Compromise between two options above: scrap as much inefficient mechs as possible, preserving enough of old mechs to have full mech bay by the moment when floor will be cleared, based on progress and earning estimations."}];
+                            {val: "single", label: "Single worst", hint: "Scrap mechs only when mech bay is full, and script need more room to build mechs"},
+                            {val: "all", label: "All inefficient", hint: "Scrap all inefficient mechs immediately, using refounded resources to build better ones"},
+                            {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just  enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
         addSettingsSelect(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped. Infernal mechs won't ever be scrapped.", scrapOptions);
+        addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechPower / NewMechPower))' more than given number.&#xA;Efficiency below '1' is not recommended, at '0' this check will be effectively disabled, allowing to scrap anything(as long as power of new mech will be above power of scrapped mechs). E.g. script will be allowed to replace 99% mech with 100% one, even if it could just wait a minute, and build second mech without scrapping old one.&#xA;With efficiency of '1' script is allowed to scrap mechs when refounded resources can immediately make up loss of power. E.g. it will be allowed to replace three 33% mechs with single 100%. This value is most optimal power wise.&#xA;Efficiency above '1' will force script to tolerate presense of bad mechs, even if replacment could be immedately benefical, scapping only terriblest ones, and saving resources. E.g. with '2' efficiency script will keep mechs which are twice worse, than it would keep with '1' efficiency.");
 
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
@@ -11700,7 +11702,7 @@
                               {val: "never", label: "Never", hint: "Never add special equipment"}];
         addSettingsSelect(currentNode, "mechSpecial", "Special mechs", "Configures special equip", specialOptions);
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
-        addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, thus it most time-efficient to fight him while current mechs can't fight properly against regular monsters, and need some time for rebuilding. Auto Power needs to be on for this to work.");
+        addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
         addSettingsToggle(currentNode, "mechFillBay", "Fill remaining bay space with smaller mechs", "Once mech bay is packed with optimal mechs of prefered size up to the limit fill up remaining space with smaller mechs, if possible");
         addSettingsToggle(currentNode, "buildingMechsFirst", "Build spire buildings only with full bay", "Fill mech bays up to current limit before spending resources on additional spire buildings");
@@ -11775,6 +11777,7 @@
 
     function resetMechSettings() {
         settings.mechScrap = "mixed";
+        settings.mechScrapEfficiency = 2;
         settings.mechBuild = "random";
         settings.mechSize = "auto";
         settings.mechSizeGravity = "auto";
