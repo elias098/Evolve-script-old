@@ -9897,7 +9897,7 @@
             description += `+${Math.round(gain)} Max Knowledge`;
         }
 
-        return `${description}<br>`;
+        return `${description}<br>${building.extraDescription}`;
     }
 
     function addTooltip(mutations) {
@@ -9918,7 +9918,7 @@
                 }
 
                 if (obj) {
-                    let note = calculateTooltipInfo(obj) + obj.extraDescription; 
+                    let note = calculateTooltipInfo(obj); 
                     if (note !== "") {
                         node.innerHTML += `<div style="border-top: solid .0625rem #999">${note}</div>`;
                     }
