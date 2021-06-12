@@ -9837,7 +9837,7 @@
             let gain = 0;
 
             if (buildings.Library.count === 0) {
-                gain += game.actions.city.library.effect().match(/[0-9]+/)[0];
+                gain += game.actions.city.library.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0];
             } else {
                 gain += parseFloat(game.breakdown.c.Knowledge[game.loc('city_library')]) / buildings.Library.count;
             }
@@ -9860,7 +9860,7 @@
             let gain = 0;
 
             if (buildings.SpaceSatellite.count === 0) {
-                gain += game.actions.space.spc_home.satellite.effect().match(/[0-9]+/)[0];
+                gain += game.actions.space.spc_home.satellite.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0];
             } else {
                 gain += parseFloat(game.breakdown.c.Knowledge[game.loc('space_home_satellite_title')]) / buildings.SpaceSatellite.count;
             }
@@ -9880,7 +9880,7 @@
             let gain = 0;
 
             if (buildings.MoonObservatory.count === 0) {
-                gain += game.actions.space.spc_moon.observatory.effect().match(/[0-9]+/)[0];
+                gain += game.actions.space.spc_moon.observatory.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0];
             } else {
                 gain += parseFloat(game.breakdown.c.Knowledge[game.loc('space_moon_observatory_title')]) / buildings.MoonObservatory.stateOnCount;
             }
