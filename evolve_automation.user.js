@@ -9353,7 +9353,7 @@
 
         // Now we're checking costs of buildings
         BuildingManager.priorityList.forEach(building => {
-            if (building.isUnlocked() && building.autoBuildEnabled){
+            if (building.isUnlocked() && building.autoBuildEnabled && (building.weighting > 0 || !settings.autoBuild)) {
                 let unaffordableReq = building.resourceRequirements.find(req => req.resource.maxQuantity < req.quantity && !req.resource.hasStorage());
                 if (!unaffordableReq) {
                     building.resourceRequirements.forEach(requirement => {
