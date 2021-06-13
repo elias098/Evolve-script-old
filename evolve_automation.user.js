@@ -714,7 +714,6 @@
 
             // Additional flags
             this.is = normalizeProperties(flags) ?? {};
-            this.isAffordableVar = false;
         }
 
         get definition() {
@@ -2073,7 +2072,7 @@
           () => 0
       ],[
           () => true,
-          (building) => { building.isAffordableVar = building.isAffordable(true); return !building.isAffordableVar; },
+          (building) => !building.isAffordable(true),
           () => "Not enough storage",
           () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
       ],[
@@ -9354,7 +9353,7 @@
 
         // Now we're checking costs of buildings
         BuildingManager.priorityList.forEach(building => {
-            if (building.isUnlocked() && building.autoBuildEnabled && (building.weighting > 0 || !settings.autoBuild || !building.isAffordableVar)) {
+            if (building.isUnlocked() && building.autoBuildEnabled && (building.weighting > 0 || !settings.autoBuild)) {
                 let unaffordableReq = building.resourceRequirements.find(req => req.resource.maxQuantity < req.quantity && !req.resource.hasStorage());
                 if (!unaffordableReq) {
                     building.resourceRequirements.forEach(requirement => {
