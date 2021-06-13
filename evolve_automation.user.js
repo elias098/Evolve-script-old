@@ -2300,7 +2300,7 @@
           () => settings.buildingWeightingMADUseless
       ],[
           () => settings.buildPopulation,
-          (building) => !building.is.housing && !building.is.garrison && resourceCost(building, resources.Knowledge) <= 0,
+          (building) => !building.is.housing && !building.is.garrison,
           () => "Building population",
           () => 0
       ],[
