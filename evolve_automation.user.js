@@ -714,7 +714,7 @@
 
             // Additional flags
             this.is = normalizeProperties(flags) ?? {};
-            this.isAffordableVar = false;
+            this.assignStorage = false;
         }
 
         get definition() {
@@ -2048,7 +2048,7 @@
           () => 0 // Set weighting to zero right away, and skip all checks if autoBuild is disabled
       ],[
           () => true,
-          (building) => !building.isUnlocked(),
+          (building) => { building.assignStorage = false; return !building.isUnlocked(); },
           () => "Locked",
           () => 0 // Should always be on top, processing locked building may lead to issues
       ],[
@@ -2071,11 +2071,6 @@
           (building) => building.count >= building.autoMax,
           () => "Maximum amount reached",
           () => 0
-      ],[
-          () => true,
-          (building) => { building.isAffordableVar = building.isAffordable(true); return !building.isAffordableVar; },
-          () => "Not enough storage",
-          () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
       ],[
           () => settings.jobDisableMiners && buildings.GatewayStarbase.count > 0,
           (building) => building === buildings.Mine || building === buildings.CoalMine,
@@ -2374,6 +2369,11 @@
           (building) => building === buildings.GateTurret,
           () => "Gate demons fully supressed",
           () => settings.buildingWeightingGateTurret
+      ],[
+          () => true,
+          (building) => { building.assignStorage = (building.weighting > 0 ? true : false); return building.isAffordable(true); },
+          () => "Not enough storage",
+          () => 0 // Red buildings need to be filtered out, so they won't prevent affordable buildings with lower weight from building
     ]];
 
     // Singleton manager objects
@@ -9354,7 +9354,7 @@
 
         // Now we're checking costs of buildings
         BuildingManager.priorityList.forEach(building => {
-            if (building.isUnlocked() && building.autoBuildEnabled && (building.weighting > 0 || !settings.autoBuild || !building.isAffordableVar)) {
+            if (building.isUnlocked() && building.autoBuildEnabled && (building.assignStorage || !settings.autoBuild)) {
                 let unaffordableReq = building.resourceRequirements.find(req => req.resource.maxQuantity < req.quantity && !req.resource.hasStorage());
                 if (!unaffordableReq) {
                     building.resourceRequirements.forEach(requirement => {
