@@ -9836,7 +9836,15 @@
         let description = "";
 
         if (building === buildings.NeutronCitadel) {
-            building.extraDescription = `Next level will increase total consumption by ${getCitadelConsumption(maxStateOn+1) - getCitadelConsumption(maxStateOn)} MW<br>${building.extraDescription}`;
+            description = `Next level will increase total consumption by ${getCitadelConsumption(building.count+1) - getCitadelConsumption(building.count)} MW`;
+        }
+
+        if (building === buildings.BlackholeStellarEngine) {
+            if (buildings.BlackholeStellarEngine.count === 100 && game.global.interstellar.stellar_engine.exotic < 0.025) {
+                let kts = resources.Elerium.atomicMass * game.global.interstellar.mass_ejector.Elerium + resources.Infernite.atomicMass * game.global.interstellar.mass_ejector.Infernite;
+                let exoticRemaining = Math.max(0, 0.025 - game.global.interstellar.stellar_engine.exotic) * 10000000000;
+                description = new Date(exoticRemaining / kts * 1000).toISOString().substr(11, 8);
+            }
         }
 
 
