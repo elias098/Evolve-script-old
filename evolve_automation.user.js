@@ -6348,7 +6348,7 @@
 
         minSoldiers = minSoldiers ?? m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMinAdvantage, requiredTactic, attackIndex));
         maxSoldiers = maxSoldiers ?? m.getSoldiersForAttackRating(getRatingForAdvantage(settings.foreignMaxAdvantage, requiredTactic, attackIndex));
-        if (m.wounded > 1 && m.currentCityGarrison - m.wounded < maxSoldiers) {
+        if (m.wounded > 0 && m.currentCityGarrison - m.wounded < maxSoldiers) {
             return;
         }
 
