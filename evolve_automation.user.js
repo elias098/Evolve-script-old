@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve test
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.68
+// @version      3.3.1.72
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/elias098/cc891c9c4bdc6276a8dfa4d346d92c30/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -309,7 +309,7 @@
             }
 
             // Exclude ejected resources, so we can reuse it
-            if (settings.prestigeWhiteholeEjectEnabled && this.isEjectable() && buildings.BlackholeMassEjector.count > 0) {
+            if ((settings.prestigeWhiteholeEjectEnabled || haveTask("trash")) && this.isEjectable() && buildings.BlackholeMassEjector.count > 0) {
                 this.currentEject = game.global.interstellar.mass_ejector[this._id];
                 this.rateOfChange += this.currentEject;
             } else {
@@ -895,7 +895,7 @@
                 // Adjust fuel
                 let consumptionRate = this.consumption[j].rate;
                 if (this._tab === "space" && (resource === resources.Oil || resource === resources.Helium_3)) {
-                    consumptionRate = game.fuel_adjust(consumptionRate);
+                    consumptionRate = game.fuel_adjust(consumptionRate, true);
                 }
                 if (this._tab === "interstellar" && (resource === resources.Deuterium || resource === resources.Helium_3) && this !== buildings.AlphaFusion) {
                     consumptionRate = game.int_fuel_adjust(consumptionRate);
@@ -1012,6 +1012,12 @@
         }
     }
 
+    class ForgeHorseshoe extends Action {
+        get count() {
+            return resources.Horseshoe.currentQuantity;
+        }
+    }
+
     class EvolutionAction extends Action {
         isUnlocked() {
             let node = document.getElementById(this._vueBinding);
@@ -1056,27 +1062,14 @@
     }
 
     class ModalAction extends Action {
-        constructor(name, tab, id, location, modalTab) {
-            super(name, tab, id, location);
+        constructor(...args) {
+            super(...args);
 
-            this._modalTab = modalTab;
             this._vue = undefined;
         }
 
         get vue() {
             return this._vue;
-        }
-
-        get definition() {
-            if (this._location !== "") {
-                return game.actions[this._modalTab][this._location][this._id];
-            } else {
-                return game.actions[this._modalTab][this._id];
-            }
-        }
-
-        get instance() {
-            return game.global[this._modalTab][this._id];
         }
 
         isOptionsCached() {
@@ -1565,6 +1558,9 @@
     const planetBiomes = ["oceanic", "forest", "grassland", "desert", "volcanic", "tundra", "eden", "hellscape"];
     const planetTraits = ["magnetic", "elliptical", "none", "rage", "stormy", "toxic", "ozone", "trashed", "dense", "unstable", "mellow", "flare"];
     const planetBiomeGenus = {hellscape: "demonic", eden: "angelic", oceanic: "aquatic", forest: "fey", desert: "sand", volcanic: "heat", tundra: "polar"};
+    const fanatAchievements = [{god: 'sharkin', race: 'entish', achieve: 'madagascar_tree'},
+                               {god: 'sporgar', race: 'human', achieve: 'infested'},
+                               {god: 'shroomi', race: 'troll', achieve: 'godwin'}];
 
     const challenges = [
         [{id:"plasmid", trait:"no_plasmid"},
@@ -1724,6 +1720,7 @@
         Red_Support: new Support("Red Support", "srspc_red", "space", "spc_red"),
         Sun_Support: new Support("Sun Support", "srspc_sun", "space", "spc_sun"),
         Belt_Support: new BeltSupport("Belt Support", "srspc_belt", "space", "spc_belt"),
+        //Titan_Support: new Support("Titan Support", "srspc_titan", "space", "spc_titan"),
         Alpha_Support: new Support("Alpha Support", "srint_alpha", "interstellar", "int_alpha"),
         Nebula_Support: new Support("Nebula Support", "srint_nebula", "interstellar", "int_nebula"),
         Gateway_Support: new Support("Gateway Support", "gxy_gateway", "galaxy", "gxy_gateway"),
@@ -1773,7 +1770,7 @@
         Stone: new Action("Stone", "city", "stone", ""),
         Chrysotile: new Action("Chrysotile", "city", "chrysotile", ""),
         Slaughter: new Action("Slaughter", "city", "slaughter", ""),
-        ForgeHorseshoe: new Action("Horseshoe", "city", "horseshoe", ""),
+        ForgeHorseshoe: new ForgeHorseshoe("Horseshoe", "city", "horseshoe", "", {housing: true, garrison: true}),
         SacrificialAltar: new Action("Sacrificial Altar", "city", "s_alter", ""),
         MeditationChamber: new Action("Meditation Chamber", "city", "meditation", ""),
 
@@ -1827,21 +1824,18 @@
         CompostHeap: new Action("Compost Heap", "city", "compost", ""),
         Pylon: new Action("Pylon", "city", "pylon", ""),
 
-        // Space
         SpaceTestLaunch: new Action("Space Test Launch", "space", "test_launch", "spc_home"),
         SpaceSatellite: new Action("Space Satellite", "space", "satellite", "spc_home", {knowledge: true}),
         SpaceGps: new Action("Space Gps", "space", "gps", "spc_home"),
         SpacePropellantDepot: new Action("Space Propellant Depot", "space", "propellant_depot", "spc_home"),
         SpaceNavBeacon: new Action("Space Navigation Beacon", "space", "nav_beacon", "spc_home"),
 
-        // Moon
         MoonMission: new Action("Moon Mission", "space", "moon_mission", "spc_moon"),
         MoonBase: new Action("Moon Base", "space", "moon_base", "spc_moon"),
         MoonIridiumMine: new Action("Moon Iridium Mine", "space", "iridium_mine", "spc_moon"),
         MoonHeliumMine: new Action("Moon Helium-3 Mine", "space", "helium_mine", "spc_moon"),
         MoonObservatory: new Action("Moon Observatory", "space", "observatory", "spc_moon", {knowledge: true}),
 
-        // Red
         RedMission: new Action("Red Mission", "space", "red_mission", "spc_red"),
         RedSpaceport: new Action("Red Spaceport", "space", "spaceport", "spc_red"),
         RedTower: new Action("Red Space Control", "space", "red_tower", "spc_red"),
@@ -1855,49 +1849,47 @@
         RedExoticLab: new Action("Red Exotic Materials Lab", "space", "exotic_lab", "spc_red", {knowledge: true}),
         RedZiggurat: new Action("Red Ziggurat", "space", "ziggurat", "spc_red"),
         RedSpaceBarracks: new Action("Red Marine Barracks", "space", "space_barracks", "spc_red", {garrison: true}),
-        RedForgeHorseshoe: new Action("Red Horseshoe (Cataclysm only)", "space", "horseshoe", "spc_red"),
+        RedForgeHorseshoe: new ForgeHorseshoe("Red Horseshoe (Cataclysm only)", "space", "horseshoe", "spc_red", {housing: true, garrison: true}),
 
-        // Hell
         HellMission: new Action("Hell Mission", "space", "hell_mission", "spc_hell"),
         HellGeothermal: new Action("Hell Geothermal Plant", "space", "geothermal", "spc_hell"),
         HellSpaceCasino: new Action("Hell Space Casino", "space", "spc_casino", "spc_hell"),
         HellSwarmPlant: new Action("Hell Swarm Plant", "space", "swarm_plant", "spc_hell"),
 
-        // Sun
         SunMission: new Action("Sun Mission", "space", "sun_mission", "spc_sun"),
         SunSwarmControl: new Action("Sun Control Station", "space", "swarm_control", "spc_sun"),
         SunSwarmSatellite: new Action("Sun Swarm Satellite", "space", "swarm_satellite", "spc_sun"),
 
-        // Gas
         GasMission: new Action("Gas Mission", "space", "gas_mission", "spc_gas"),
         GasMining: new Action("Gas Helium-3 Collector", "space", "gas_mining", "spc_gas", {smart: true}),
         GasStorage: new Action("Gas Fuel Depot", "space", "gas_storage", "spc_gas"),
         GasSpaceDock: new SpaceDock("Gas Space Dock", "space", "star_dock", "spc_gas"),
-        GasSpaceDockProbe: new ModalAction("Gas Space Probe", "starDock", "probes", "", "starDock"),
-        GasSpaceDockShipSegment: new ModalAction("Gas Bioseeder Ship Segment", "starDock", "seeder", "", "starDock"),
-        GasSpaceDockPrepForLaunch: new ModalAction("Gas Prep Ship", "starDock", "prep_ship", "", "starDock"),
-        GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "starDock", "launch_ship", "", "starDock"),
+        GasSpaceDockProbe: new ModalAction("Gas Space Probe", "starDock", "probes", ""),
+        GasSpaceDockShipSegment: new ModalAction("Gas Bioseeder Ship Segment", "starDock", "seeder", ""),
+        GasSpaceDockPrepForLaunch: new ModalAction("Gas Prep Ship", "starDock", "prep_ship", ""),
+        GasSpaceDockLaunch: new ModalAction("Gas Launch Ship", "starDock", "launch_ship", ""),
 
-        // Gas moon
         GasMoonMission: new Action("Gas Moon Mission", "space", "gas_moon_mission", "spc_gas_moon"),
         GasMoonOutpost: new Action("Gas Moon Mining Outpost", "space", "outpost", "spc_gas_moon"),
         GasMoonDrone: new Action("Gas Moon Mining Drone", "space", "drone", "spc_gas_moon"),
         GasMoonOilExtractor: new Action("Gas Moon Oil Extractor", "space", "oil_extractor", "spc_gas_moon", {smart: true}),
 
-        // Belt
         BeltMission: new Action("Belt Mission", "space", "belt_mission", "spc_belt"),
         BeltSpaceStation: new Action("Belt Space Station", "space", "space_station", "spc_belt", {smart: true}),
         BeltEleriumShip: new Action("Belt Elerium Mining Ship", "space", "elerium_ship", "spc_belt", {smart: true}),
         BeltIridiumShip: new Action("Belt Iridium Mining Ship", "space", "iridium_ship", "spc_belt", {smart: true}),
         BeltIronShip: new Action("Belt Iron Mining Ship", "space", "iron_ship", "spc_belt", {smart: true}),
 
-        // Dwarf
         DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", "spc_dwarf"),
         DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", "spc_dwarf"),
         DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", "spc_dwarf"),
         DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
         DwarfWorldController: new Action("Dwarf World Collider (Complete)", "space", "world_controller", "spc_dwarf", {knowledge: true}),
-
+        /*
+        TitanMission: new Action("Titan Mission", "space", "titan_mission", "spc_titan"),
+        TitanSpaceport: new Action("Titan Spaceport", "space", "titan_spaceport", "spc_titan"),
+        EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
+        */
         AlphaMission: new Action("Alpha Centauri Mission", "interstellar", "alpha_mission", "int_alpha"),
         AlphaStarport: new Action("Alpha Starport", "interstellar", "starport", "int_alpha"),
         AlphaHabitat: new Action("Alpha Habitat", "interstellar", "habitat", "int_alpha", {housing: true}),
@@ -2192,17 +2184,17 @@
       ],[
           () => buildings.SpireWaygate.isUnlocked() && haveTech("waygate", 2),
           (building) => building === buildings.SpireWaygate,
-          () => "Not avaiable",
+          () => "Not available",
           () => 0 // We can't limit waygate using gameMax, as max here doesn't constant. It's start with 10, but after building count reduces down to 1
       ],[
           () => buildings.SpireSphinx.isUnlocked() && haveTech("hell_spire", 8),
           (building) => building === buildings.SpireSphinx,
-          () => "Not avaiable",
+          () => "Not available",
           () => 0 // Sphinx not usable after solving
       ],[
           () => buildings.RuinsAncientPillars.isUnlocked() && (game.global.tech.pillars !== 1 || game.global.race.universe === 'micro'),
           (building) => building === buildings.RuinsAncientPillars,
-          () => "Not avaiable",
+          () => "Not available",
           () => 0 // Pillars can't be activated in micro, and without tech.
       ],[
           () => buildings.GorddonEmbassy.count === 0 && resources.Knowledge.maxQuantity < settings.fleetEmbassyKnowledge,
@@ -2391,7 +2383,7 @@
           () => "Need more fuel",
           () => settings.buildingWeightingMissingFuel
       ],[
-          () => game.global.race.hooved && resources.Horseshoe.usefulRatio >= 1,
+          () => game.global.race.hooved && resources.Horseshoe.spareQuantity >= resources.Horseshoe.storageRequired,
           (building) => building === buildings.ForgeHorseshoe || building === buildings.RedForgeHorseshoe,
           () => "No more Horseshoes needed",
           () => settings.buildingWeightingHorseshoeUseless
@@ -3360,6 +3352,10 @@
 
         get maxCityGarrison() {
             return this.maxSoldiers - this.hellSoldiers;
+        },
+
+        get availableGarrison() {
+            return this.currentCityGarrison - this.wounded;
         },
 
         get hellGarrison()  {
@@ -4513,6 +4509,7 @@
         settings.foreignMinAdvantage = 40;
         settings.foreignMaxAdvantage = 50;
         settings.foreignMaxSiegeBattalion = 10;
+        settings.foreignProtectSoldiers = false;
 
         settings.foreignPacifist = false;
         settings.foreignUnification = true;
@@ -4608,9 +4605,7 @@
         settings.evolutionQueueEnabled = false;
         settings.evolutionQueueRepeat = false;
         settings.evolutionBackup = false;
-        for (let i = 0; i < challenges.length; i++) {
-            settings["challenge_" + challenges[i][0].id] = false;
-        }
+        challenges.forEach(set => settings["challenge_" + set[0].id] = false);
     }
 
     function resetResearchSettings() {
@@ -4684,10 +4679,6 @@
         }
     }
 
-    function resetMinorTraitSettings() {
-        // None currently
-    }
-
     function resetJobSettings() {
         settings.jobSetDefault = true;
         settings.jobLumberWeighting = 50;
@@ -4697,9 +4688,7 @@
         settings.jobDisableMiners = true;
         settings.jobDisableCraftsmans = true;
 
-        for (let i = 0; i < JobManager.priorityList.length; i++){
-            JobManager.priorityList[i].autoJobEnabled = true;
-        }
+        JobManager.priorityList.forEach(job => job.autoJobEnabled = true);
     }
 
     function resetJobState() {
@@ -5133,9 +5122,6 @@
         RitualManager.Productions.Farmer.weighting = 1;
     }
 
-    function resetTriggerSettings() {
-    }
-
     function resetTriggerState() {
         TriggerManager.priorityList = [];
     }
@@ -5151,7 +5137,6 @@
     function updateStateFromSettings() {
         updateStandAloneSettings();
 
-        settings.triggers = settings.triggers ?? [];
         TriggerManager.priorityList = [];
         settings.triggers.forEach(trigger => TriggerManager.AddTriggerFromSetting(trigger));
 
@@ -5375,6 +5360,7 @@
     function updateStandAloneSettings() {
         settings['scriptName'] = "TMVictor";
 
+        addSetting("triggers", []);
         addSetting("evolutionQueue", []);
         addSetting("evolutionQueueEnabled", false);
         addSetting("evolutionQueueRepeat", false);
@@ -5478,7 +5464,8 @@
         addSetting("foreignHireMercDeadSoldiers", 1);
         addSetting("foreignMinAdvantage", 40);
         addSetting("foreignMaxAdvantage", 50);
-        addSetting("foreignMaxSiegeBattalion", 15);
+        addSetting("foreignMaxSiegeBattalion", 10);
+        addSetting("foreignProtectSoldiers", false);
 
         addSetting("foreignPacifist", false);
         addSetting("foreignUnification", true);
@@ -5585,9 +5572,10 @@
         addSetting("mechBaysFirst", true);
         addSetting("mechWaygatePotential", 0.4);
 
-        biomeList.forEach(id => addSetting("biome_w_" + id, 0));
-        traitList.forEach(id => addSetting("trait_w_" + id, 0));
-        extraList.forEach(id => addSetting("extra_w_" + id, 0));
+        biomeList.forEach(biome => addSetting("biome_w_" + biome, (planetBiomes.length - planetBiomes.indexOf(biome)) * 10));
+        traitList.forEach(trait => addSetting("trait_w_" + trait, (planetTraits.length - planetTraits.indexOf(trait)) * 10));
+        addSetting("extra_w_Achievement", 1000);
+        extraList.forEach(extra => addSetting("extra_w_" + extra, 0));
 
         // Convert old setings
         settings.triggers.forEach(t => {
@@ -5696,8 +5684,8 @@
                     for (let j = 0; j < raceGroup.length; j++) {
                         let race = raceGroup[j];
 
-                        // Ignore Valdi if we're not going for 4star
-                        if (race === races.junker && achievementLevel < 5) {
+                        // Ignore Valdi if we're not going for 4star MAD
+                        if (race === races.junker && (achievementLevel < 5 || settings.prestigeType === 'bioseed')) {
                             continue;
                         }
 
@@ -5933,7 +5921,7 @@
             }
             if (planetBiomeGenus[planet.biome]) {
                 for (let id in races) {
-                    if (races[id].genus === planetBiomeGenus[planet.biome] && !isAchievementUnlocked("extinct_" + races[id], alevel)) {
+                    if (races[id].genus === planetBiomeGenus[planet.biome] && !isAchievementUnlocked("extinct_" + id, alevel)) {
                         planet.achieve++;
                     }
                 }
@@ -6114,9 +6102,9 @@
                 currentTarget.policy = "Sabotage";
             }
 
-            // Set last foreign to sabbotage only, and then switch to occupy once we're ready to unify
+            // Set last foreign to sabotage only, and then switch to occupy once we're ready to unify
             if (settings.foreignOccupyLast && !haveTech('world_control')) {
-                let lastTarget = ["Ocuupy", "Sabbotage"].includes(settings.foreignPolicySuperior) ? Math.max(...unlockedForeigns) : currentTarget.id;
+                let lastTarget = ["Occupy", "Sabotage"].includes(settings.foreignPolicySuperior) ? Math.max(...unlockedForeigns) : currentTarget.id;
                 activeForeigns.find(foreign => foreign.id === lastTarget).policy = readyToUnify ? "Occupy" : "Sabotage";
             }
 
@@ -6237,18 +6225,33 @@
         if (m.wounded > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison ||
             m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison) {
             return;
-        }
+    }
 
-        let bestAttackRating = game.armyRating(m.currentCityGarrison, "army", "0");
+        // Calculating safe size of battalions, if needed
+
+        // TODO: Configurable max
+        let maxBattalion = new Array(5).fill(m.maxCityGarrison);
+        if (settings.foreignProtectSoldiers) {
+            let armor = ((game.global.race.scales ? 2 : 0) + (game.global.tech.armor ?? 0)) * (game.global.race.armored ? 4 : 1) - (game.global.race.frail ? 1 : 0);
+            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0)) * 5 - tactic)));
+            maxBattalion = maxBattalion.map((garrison, tactic) => Math.min(garrison, protectedBattalion[tactic]));
+        }
+        maxBattalion[4] = Math.min(maxBattalion[4], settings.foreignMaxSiegeBattalion);
+
+        let requiredBattalion = settings.foreignProtectSoldiers ? 0 : m.maxCityGarrison;
         let requiredTactic = 0;
 
         // Check if there's something that we want and can occupy, and switch to that target if found
         for (let i = 0; i < activeForeigns.length; i++) {
             let foreign = activeForeigns[i];
-            if (foreign.policy === "Occupy" && !foreign.gov.occ && m.getAdvantage(bestAttackRating, 4, foreign.id) >= settings.foreignMinAdvantage) {
-                currentTarget = foreign;
-                requiredTactic = 4;
-                break;
+            if (foreign.policy === "Occupy" && !foreign.gov.occ) {
+                let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, foreign.id);
+                if (soldiersMin <= m.maxCityGarrison) {
+                    currentTarget = foreign;
+                    requiredBattalion = Math.max(soldiersMin, Math.min(m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, foreign.id) - 1));
+                    requiredTactic = 4;
+                    break;
+                }
             }
         }
 
@@ -6257,39 +6260,22 @@
             return;
         }
 
-        let minSoldiers = null;
-        let maxSoldiers = null;
-
-        // Check if we can siege for loot
         if (requiredTactic !== 4) {
-            let minSiegeSoldiers = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, 4, currentTarget.id);
-            if (minSiegeSoldiers <= settings.foreignMaxSiegeBattalion && minSiegeSoldiers <= m.currentCityGarrison) {
-                minSoldiers = minSiegeSoldiers;
-                maxSoldiers = Math.min(m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, 4, currentTarget.id), settings.foreignMaxSiegeBattalion + 1);
-                requiredTactic = 4;
-            }
-        }
-        // If we aren't going to siege our target, then let's find best tactic for plundering
-        if (requiredTactic !== 4) {
-            for (let i = 3; i > 0; i--) {
-                if (m.getAdvantage(bestAttackRating, i, currentTarget.id) >= settings.foreignMinAdvantage) {
+            // If we don't need to occupy our target, then let's find best tactic for plundering
+            for (let i = 4; i >= 0; i--) {
+                let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, i, currentTarget.id);
+                if (soldiersMin <= maxBattalion[i]) {
+                    requiredBattalion = Math.max(soldiersMin, Math.min(maxBattalion[i], m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, i, currentTarget.id) - 1));
                     requiredTactic = i;
                     break;
                 }
             }
         }
 
-        minSoldiers = minSoldiers ?? m.getSoldiersForAdvantage(settings.foreignMinAdvantage, requiredTactic, currentTarget.id);
-        maxSoldiers = maxSoldiers ?? m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, requiredTactic, currentTarget.id);
-        if (m.wounded > 0 && m.currentCityGarrison - m.wounded < maxSoldiers) {
+        // Not enough healthy soldiers, keep resting
+        if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
             return;
         }
-
-        // Max soldiers advantage should be above our max. Let's tune it down to stay in preferred range, if we can
-        if (maxSoldiers > minSoldiers) {
-            maxSoldiers--;
-        }
-        maxSoldiers = Math.min(maxSoldiers, m.currentCityGarrison - m.wounded);
 
         // Occupy can pull soldiers from ships, let's make sure it won't happen
         if (currentTarget.gov.anx || currentTarget.gov.buy || currentTarget.gov.occ) {
@@ -6297,7 +6283,7 @@
             m.launchCampaign(currentTarget.id);
         } else if (requiredTactic === 4 && m.crew > 0) {
             let occCost = game.global.civic.govern.type === "federation" ? 15 : 20;
-            let missingSoldiers = occCost - (m.currentCityGarrison - m.wounded - maxSoldiers);
+            let missingSoldiers = occCost - (m.availableGarrison - requiredBattalion);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
                 if (!settings.autoHell || !m.initHell() || m.hellSoldiers - m.hellReservedSoldiers < missingSoldiers) {
@@ -6315,7 +6301,7 @@
         m.setTactic(requiredTactic);
 
         // Now adjust our battalion size to fit between our campaign attack rating ranges
-        let deltaBattalion = maxSoldiers - m.raid;
+        let deltaBattalion = requiredBattalion - m.raid;
         if (deltaBattalion > 0) {
             m.addBattalion(deltaBattalion);
         }
@@ -6738,6 +6724,10 @@
                     if (!resources.Cement.isUseful()) {
                         jobsToAssign = Math.min(jobsToAssign, resources.Cement.getBusyWorkers("city_cement_plant_bd", jobs.CementWorker.count));
                     }
+                }
+
+                if (job === jobs.Surveyor && game.global.portal.fortress.threat > 9000 && resources.Population.storageRatio < 1) {
+                    jobsToAssign = 0;
                 }
 
                 jobsToAssign = Math.max(0, jobsToAssign);
@@ -7395,7 +7385,7 @@
     // TODO: Add option how to handle each resource: eject when capped, or when excess
     function autoMassEjector() {
         let enabledEjectors = buildings.BlackholeMassEjector.stateOnCount;
-        if (enabledEjectors < 1) {
+        if (enabledEjectors < 1 || haveTask("trash")) {
             return;
         }
 
@@ -7845,11 +7835,8 @@
         // Check for active build triggers, and click if possible
         for (let i = 0; i < state.triggerTargets.length; i++) {
             let building = state.triggerTargets[i];
-            if (building instanceof Action && building.isClickable()) {
-                building.click();
-                if (building.consumption.length > 0) {
-                    return;
-                }
+            if (building instanceof Action && building.click() && building.consumption.length > 0) {
+                return;
             }
         }
 
@@ -7861,13 +7848,15 @@
 
         let estimatedTime = {};
         let affordableCache = {};
+        const isAffordable = (building) => (affordableCache[building._vueBinding] ?? (affordableCache[building._vueBinding] = building.isAffordable()));
+
         // Loop through the auto build list and try to buy them
         buildingsLoop:
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
 
             // Only go further if it's affordable building, and not current target
-            if (ignoredList.includes(building) || !(affordableCache[building._vueBinding] ?? (affordableCache[building._vueBinding] = building.isAffordable()))) {
+            if (ignoredList.includes(building) || !isAffordable(building)) {
                 continue;
             }
 
@@ -7890,8 +7879,8 @@
                     }
                     // And we don't want to process clickable buildings - all buildings with highter weighting should already been proccessed.
                     // If that thing is affordable, but wasn't bought - it means something block it, and it won't be builded soon anyway, so we'll ignore it's demands.
-                    // x10 weight for building to be checked against
-                    if (weightDiffRatio < 10 && (affordableCache[other._vueBinding] ?? (affordableCache[other._vueBinding] = other.isAffordable()))){
+                    // Unless that thing have x10 weight, and we absolutely don't want to waste its resources
+                    if (weightDiffRatio < 10 && isAffordable(other)){
                         continue;
                     }
 
@@ -7966,12 +7955,17 @@
                 if (building.consumption.length > 0) { // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
                     return;
                 }
-                affordableCache = {}; // Clear cache after spending resources, and recheck buildings again
+                // Mark all processed building as unaffordable for remaining loop, so they won't appear as conflicting
+                for (let key in affordableCache) {
+                    affordableCache[key] = false;
+                }
             }
         }
     }
 
-    function isTechAllowed(itemId) {
+    function isTechAllowed(tech) {
+        let itemId = tech._vueBinding;
+
         // Skip ignored techs
         if (settings.researchIgnore.includes(itemId)) {
             return false;
@@ -7979,7 +7973,7 @@
 
         // Save soul gems for reset
         if (settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole") {
-            let gemsCost = resourceCost(techIds[itemId], resources.Soul_Gem);
+            let gemsCost = resourceCost(tech, resources.Soul_Gem);
             if (gemsCost > 0 && resources.Soul_Gem.currentQuantity - gemsCost < 10) {
                 return false;
             }
@@ -8012,16 +8006,16 @@
         }
 
         // If user wants to stabilize blackhole then do it, unless we're on blackhole run
-        if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || settings.prestigeType === "whitehole" )) {
+        if (itemId === "tech-stabilize_blackhole" && (!settings.prestigeWhiteholeStabiliseMass || settings.prestigeType === "whitehole")) {
             return false;
         }
 
         if (itemId !== settings.userResearchTheology_1) {
-            if (itemId === "tech-anthropology" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType === "mad")) {
+            const isFanatRace = () => Object.values(fanatAchievements).reduce((result, combo) => result || (game.global.race.species === combo.race && game.global.race.gods === combo.god && !isAchievementUnlocked(combo.achieve, game.alevel())), false);
+            if (itemId === "tech-anthropology" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType === "mad" && !isFanatRace())) {
                 return false;
             }
-
-            if (itemId === "tech-fanaticism" && !(settings.userResearchTheology_1 === "auto" && settings.prestigeType !== "mad")) {
+            if (itemId === "tech-fanaticism" && !(settings.userResearchTheology_1 === "auto" && (settings.prestigeType !== "mad" || isFanatRace()))) {
                 return false;
             }
         }
@@ -8030,7 +8024,6 @@
             if (itemId === "tech-deify" && !(settings.userResearchTheology_2 === "auto" && (settings.prestigeType === "ascension" || settings.prestigeType === "demonic"))) {
                 return false;
             }
-
             if (itemId === "tech-study" && !(settings.userResearchTheology_2 === "auto" && settings.prestigeType !== "ascension" && settings.prestigeType !== "demonic")) {
                 return false;
             }
@@ -8049,16 +8042,18 @@
         // Check for active triggers, and click if possible
         for (let i = 0; i < state.triggerTargets.length; i++) {
             let tech = state.triggerTargets[i];
-            if (tech instanceof Technology && tech.isClickable()) {
-                tech.click();
+            if (tech instanceof Technology && tech.click()) {
+                BuildingManager.updateBuildings();
+                ProjectManager.updateProjects();
                 return;
             }
         }
 
         for (let i = 0; i < items.length; i++) {
-            let itemId = items[i].id;
-            if (isTechAllowed(itemId) && !getCostConflict(techIds[itemId]) && techIds[itemId].click()) {
+            let tech = techIds[items[i].id];
+            if (isTechAllowed(tech) && !getCostConflict(tech) && tech.click()) {
                 BuildingManager.updateBuildings(); // Cache cost if we just unlocked some building
+                ProjectManager.updateProjects();
                 return;
             }
         }
@@ -8099,7 +8094,7 @@
                 // Fuel adjust
                 let consumptionRate = resourceType.rate;
                 if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    consumptionRate = game.fuel_adjust(consumptionRate);
+                    consumptionRate = game.fuel_adjust(consumptionRate, true);
                 }
                 if ((building._tab === "interstellar" || building._tab === "galaxy") && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== buildings.AlphaFusion) {
                     consumptionRate = game.int_fuel_adjust(consumptionRate);
@@ -8294,7 +8289,7 @@
                 // Fuel adjust
                 let consumptionRate = resourceType.rate;
                 if (building._tab === "space" && (resourceType.resource === resources.Oil || resourceType.resource === resources.Helium_3)) {
-                    consumptionRate = game.fuel_adjust(consumptionRate);
+                    consumptionRate = game.fuel_adjust(consumptionRate, true);
                 }
                 if ((building._tab === "interstellar" || building._tab === "galaxy") && (resourceType.resource === resources.Deuterium || resourceType.resource === resources.Helium_3) && building !== buildings.AlphaFusion) {
                     consumptionRate = game.int_fuel_adjust(consumptionRate);
@@ -8717,7 +8712,7 @@
         // Check demanded resources
         for (let id in resources) {
             let resource = resources[id];
-            if (resource.isDemanded() && resource.isUnlocked() && resource.isTradable()) {
+            if (resource.isDemanded() && resource.isUnlocked() && resource.isTradable() && resource.storageRatio < 0.98) {
                 // Calculate amount of routes we need
                 let routes = Math.ceil((resource.requestedQuantity - resource.currentQuantity) / resource.tradeRouteQuantity);
 
@@ -9280,12 +9275,12 @@
         // Get list of all unlocked techs, and find biggest numbers for each resource
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
         $("#tech .action").each(function() {
-            if (!isTechAllowed(this.id)) {
+            let tech = techIds[this.id];
+            tech.updateResourceRequirements();
+            if (!isTechAllowed(tech) && !state.triggerTargets.includes(tech)) {
                 return;
             }
-            let research = techIds[this.id];
-            research.updateResourceRequirements();
-            research.resourceRequirements.forEach(requirement => {
+            tech.resourceRequirements.forEach(requirement => {
                 requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
             });
         });
@@ -9352,10 +9347,10 @@
         // Unlocked and affordable techs, and but only if we don't have anything more important
         if (prioritizedTasks.length === 0 && (haveTech("mad") ? settings.researchRequestSpace : settings.researchRequest)) {
             $("#tech .action:not(.cnam)").each(function() {
-                if (!isTechAllowed(this.id)) {
-                    return;
+                let tech = techIds[this.id];
+                if (isTechAllowed(tech)) {
+                    prioritizedTasks.push(tech);
                 }
-                prioritizedTasks.push(techIds[this.id]);
             });
         }
 
@@ -9433,8 +9428,6 @@
                 let id = game.global.r_queue.queue[i].id;
                 let obj = techIds[id];
                 if (obj) {
-                    // TODO: Duplicate update. Refactor me.
-                    obj.updateResourceRequirements();
                     obj.resourceRequirements.forEach(requirement => {
                         requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
                     });
@@ -9855,6 +9848,13 @@
 
         // Other tooltips goes here...
 
+        if (((!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargets.includes(obj)) {
+            let conflict = getCostConflict(obj);
+            if (conflict) {
+                notes.push(`Conflicts with ${conflict.target.title} for ${conflict.res.name} (${conflict.cause})`);
+            }
+        }
+
         if (obj.extraDescription) {
             notes.push(obj.extraDescription);
         }
@@ -10225,6 +10225,7 @@
             }
 
             /* Fixes for game styles */
+            .main .resources .resource :first-child { white-space: nowrap; }
             #popTimer { margin-bottom: 0.1rem }
             #powerStatus { white-space: nowrap; } // TODO: Remove in 1.2
             .barracks { white-space: nowrap; }
@@ -10769,7 +10770,7 @@
 
         let governmentOptions = Object.keys(GovernmentManager.Types).filter(id => id !== "anarchy").map(id => ({val: id, label: game.loc(`govern_${id}`), hint: game.loc(`govern_${id}_desc`)}));
         addSettingsSelect(currentNode, "govInterim", "Interim Government", "Temporary low tier government until you research other governments", governmentOptions);
-        addSettingsSelect(currentNode, "govFinal", "Second Government", "Second government choice, chosen once becomes avaiable. Can be the same as above", governmentOptions);
+        addSettingsSelect(currentNode, "govFinal", "Second Government", "Second government choice, chosen once becomes available. Can be the same as above", governmentOptions);
         addSettingsSelect(currentNode, "govSpace", "Space Government", "Government for bioseed+. Chosen once you researched Quantum Manufacturing. Can be the same as above", governmentOptions);
 
         let governorsOptions = [{val: "none", label: "None", hint: ""}, ...governors.map(id => ({val: id, label: game.loc(`governor_${id}`), hint: game.loc(`governor_${id}_desc`)}))];
@@ -10974,12 +10975,11 @@
             try {
                 let queuedEvolution = JSON.parse(this.value);
                 settings.evolutionQueue[id] = queuedEvolution;
+                updateSettingsFromState();
+                updateEvolutionSettingsContent();
             } catch (error) {
-                alert(error);
-                settings.evolutionQueue.splice(id, 1);
+                queueNode.find('td:eq(0)').html(`<span class="has-text-danger">${error}</span>`);
             }
-            updateSettingsFromState();
-            updateEvolutionSettingsContent();
 
             let content = document.querySelector('#script_evolutionSettings .script-content');
             content.style.height = null;
@@ -11087,15 +11087,10 @@
     }
 
     function resetPlanetSettings() {
-        for (let i = 0; i < biomeList.length; i++) {
-            settings["biome_w_" + biomeList[i]] = 0;
-        }
-        for (let i = 0; i < traitList.length; i++) {
-            settings["trait_w_" + traitList[i]] = 0;
-        }
-        for (let i = 0; i < extraList.length; i++) {
-            settings["extra_w_" + extraList[i]] = 0;
-        }
+        biomeList.forEach(biome => settings["biome_w_" + biome] = (planetBiomes.length - planetBiomes.indexOf(biome)) * 10);
+        traitList.forEach(trait => settings["trait_w_" + trait] = (planetTraits.length - planetTraits.indexOf(trait)) * 10);
+        extraList.forEach(extra => settings["extra_w_" + extra] = 0);
+        settings.extra_w_Achievement = 1000;
     }
 
     function buildTriggerSettings() {
@@ -11103,7 +11098,6 @@
         let sectionName = "Trigger";
 
         let resetFunction = function() {
-            resetTriggerSettings();
             resetTriggerState();
             updateSettingsFromState();
             updateTriggerSettingsContent();
@@ -11429,7 +11423,7 @@
         currentNode.empty().off("*");
 
         // Theology 1
-        let theology1Options = [{val: "auto", label: "Script Managed", hint: "Picks Anthropology for MAD prestige, and Fanaticism for others"},
+        let theology1Options = [{val: "auto", label: "Script Managed", hint: "Picks Anthropology for MAD prestige, and Fanaticism for others. Achieve-worthy combos are exception, on such runs Fanaticism will be always picked."},
                                 {val: "tech-anthropology", label: game.loc('tech_anthropology'), hint: game.loc('tech_anthropology_effect')},
                                 {val: "tech-fanaticism", label: game.loc('tech_fanaticism'), hint: game.loc('tech_fanaticism_effect')}];
         addSettingsSelect(currentNode, "userResearchTheology_1", "Target Theology 1", "Theology 1 technology to research, have no effect after getting Transcendence perk", theology1Options);
@@ -11494,9 +11488,10 @@
         addSettingsNumber(currentNode, "foreignHireMercCostLowerThanIncome", "OR if cost lower than money earned in X seconds", "Combines with the money storage percent setting to determine when to hire mercenaries");
         addSettingsNumber(currentNode, "foreignHireMercDeadSoldiers", "AND amount of dead soldiers above this number", "Hire a mercenary only when current amount of dead soldiers above given number");
 
-        addSettingsNumber(currentNode, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes");
-        addSettingsNumber(currentNode, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down this advantage, reducing potential loses");
-        addSettingsNumber(currentNode, "foreignMaxSiegeBattalion", "Maximum siege battalion", "Maximum battalion for siege campaign. Only try to siege if it's possible with up to given amount of soldiers. Siege is expensive, if you'll be doing it with too big battalion it might be less profitable than other combat campaigns. This option does not applied for unification, it's only for regular looting.");
+        addSettingsNumber(currentNode, "foreignMinAdvantage", "Minimum advantage", "Minimum advantage to launch campaign, ignored during ambushes. 100% chance to win will be reached at approximately(influenced by traits and selected campaign) 75% advantage.");
+        addSettingsNumber(currentNode, "foreignMaxAdvantage", "Maximum advantage", "Once campaign is selected, your battalion will be limited in size down to this advantage, reducing potential loses");
+        addSettingsNumber(currentNode, "foreignMaxSiegeBattalion", "Maximum siege battalion", "Maximum battalion for siege campaign. Only try to siege if it's possible with up to given amount of soldiers. Siege is expensive, if you'll be doing it with too big battalion it might be less profitable than other combat campaigns. This option does not applied to unifying sieges, it affect only looting.");
+        addSettingsToggle(currentNode, "foreignProtectSoldiers", "Protect soldiers", "Limit battalions to sizes which will neven suffer any casualties in successful fights. You still will lose soldiers after failures, increasing minimum advantage can improve winning odds. This option designed to use with armored races favoring frequent attacks, with no approppriate build it may prevent any attacks from happening. This option does not applied to unifying sieges, it affect only looting.");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
@@ -11633,9 +11628,7 @@
     }
 
     function resetFleetSettings() {
-        for (let i = 0; i < galaxyRegions.length; i++) {
-            settings["fleet_pr_" + galaxyRegions[i]] = i;
-        }
+        galaxyRegions.forEach((id, index) => settings["fleet_pr_" + id] = index);
         settings.fleetMaxCover = true;
         settings.fleetEmbassyKnowledge = 6000000;
         settings.fleetAlienGiftKnowledge = 6500000;
@@ -12131,7 +12124,6 @@
 
         let resetFunction = function() {
             resetMinorTraitState();
-            resetMinorTraitSettings();
             updateSettingsFromState();
             updateMinorTraitSettingsContent();
         };
@@ -13519,8 +13511,11 @@
     }
 
     function createMarketToggle(resource) {
+        let marketElement = $('#market-' + resource.id);
+        if (!marketElement.length) {
+            return;
+        }
         let marketRow = $('<span class="ea-market-toggle" style="margin-left: auto; margin-right: 0.2rem; float:right;"></span>');
-        $('#market-' + resource.id).append(marketRow);
 
         if (!game.global.race['no_trade']) {
             let toggleBuy = $(`<label id="script_buy1_${resource.id}" tabindex="0" title="Enable buying of this resource. When to buy is set in the Settings tab."  class="switch"><input type="checkbox"${resource.autoBuyEnabled ? " checked" : ""}> <span class="check" style="height:5px;"></span><span class="state"></span></label>`);
@@ -13539,6 +13534,8 @@
 
         toggleTradeFor.on('change', {entity: resource, property: "autoTradeBuyEnabled", sync: "script_tbuy2_" + resource.id}, toggleCallback);
         toggleTradeAway.on('change', {entity: resource, property: "autoTradeSellEnabled", sync: "script_tsell2_" + resource.id}, toggleCallback);
+
+        marketElement.append(marketRow);
     }
 
     function createMarketToggles() {
@@ -13561,12 +13558,7 @@
                                   </span>
                                 </div>`);
 
-        for (let i = 0; i < MarketManager.priorityList.length; i++) {
-            let resource = MarketManager.priorityList[i];
-            if (resource.isUnlocked()) {
-                createMarketToggle(resource);
-            }
-        }
+        MarketManager.priorityList.forEach(res => createMarketToggle(res));
     }
 
     function removeMarketToggles() {
