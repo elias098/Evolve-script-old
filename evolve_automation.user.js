@@ -9779,6 +9779,24 @@
             notes.push(`Currrent team potential: ${getNiceNumber(MechManager.mechsPotential)}`);
         }
 
+
+
+        if (obj === buildings.University) {
+            let gain = 0;
+
+            if (buildings.University.count === 0) {
+                gain += parseFloat(game.actions.city.university.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0]);
+            } else {
+                gain += parseFloat(game.breakdown.c.Knowledge[game.loc('city_university')]) / buildings.University.count;
+            }
+
+            gain *= getWorldColliderMulti();
+
+            notes.push(`+${Math.round(gain)} Max Knowledge`);
+        }
+
+
+
         if (obj === buildings.Library) {
             let gain = 0;
 
@@ -9793,6 +9811,27 @@
                     + buildings.Library.count * 0.02
                     + buildings.MoonObservatory.stateOnCount * 0.05
                     + (haveTech('science', 14) ? buildings.BadlandsSensorDrone.stateOnCount * 0.02 : 0));
+            }
+
+            gain *= getWorldColliderMulti();
+
+            notes.push(`+${Math.round(gain)} Max Knowledge`);
+        }
+
+
+
+        if (obj === buildings.Wardenclyffe) {
+            let gain = 0;
+
+            if (buildings.Wardenclyffe.count === 0) {
+                gain += parseFloat(game.actions.city.wardenclyffe.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0]);
+            } else {
+                gain += parseFloat(game.breakdown.c.Knowledge[wardenLabel()]) / buildings.Wardenclyffe.count;
+            }
+
+            if (haveTech('science', 15)) {
+                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[loc(game.global.race.universe === 'magic' ? 'tech_sanctum' : 'interstellar_laboratory_title')] ?? 0) / (1
+                    + buildings.Wardenclyffe.count * 0.02);
             }
 
             gain *= getWorldColliderMulti();
@@ -9825,7 +9864,7 @@
         if (obj === buildings.MoonObservatory) {
             let gain = 0;
 
-            if (buildings.MoonObservatory.count === 0) {
+            if (buildings.MoonObservatory.stateOnCount === 0) {
                 gain += parseFloat(game.actions.space.spc_moon.observatory.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0]);
             } else {
                 gain += parseFloat(game.breakdown.c.Knowledge[game.loc('space_moon_observatory_title')]) / buildings.MoonObservatory.stateOnCount;
@@ -9845,6 +9884,105 @@
 
             notes.push(`+${Math.round(gain)} Max Knowledge`);
         }
+
+
+
+        if (obj === buildings.RedExoticLab) {
+            let gain = 0;
+
+            if (buildings.RedExoticLab.stateOnCount === 0) {
+                gain += parseFloat(game.actions.space.spc_red.exotic_lab.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0]) * jobs.Colonist.count;
+            } else {
+                gain += parseFloat(game.breakdown.c.Knowledge[game.loc('tech_exotic_bd')]) / buildings.RedExoticLab.stateOnCount;
+            }
+
+            if (game.global.race['cataclysm'] && haveTech('science', 15)) {
+                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[loc(game.global.race.universe === 'magic' ? 'tech_sanctum' : 'interstellar_laboratory_title')] ?? 0) / (1
+                    + buildings.RedExoticLab.stateOnCount * 0.02);
+            }
+
+            gain *= getWorldColliderMulti();
+
+            notes.push(`+${Math.round(gain)} Max Knowledge`);
+        }
+
+
+
+        if (obj === buildings.AlphaLaboratory) {
+            let gain = 0;
+
+            if (buildings.AlphaLaboratory.stateOnCount === 0) {
+                gain += parseFloat(game.actions.interstellar.int_alpha.laboratory.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0]);
+            } else {
+                gain += parseFloat(game.breakdown.c.Knowledge[game.loc(game.global.race.universe === 'magic' ? 'tech_sanctum' : 'interstellar_laboratory_title')]) / buildings.AlphaLaboratory.stateOnCount;
+            }
+
+            gain += 0.05 * parseFloat(game.breakdown.c.Knowledge[game.loc('tech_exotic_bd')] ?? 0) / (1
+                + (haveTech('science', 13) ? buildings.AlphaLaboratory.stateOnCount * 0.05 : 0)
+                + (haveTech('ancient_study', 2) ? buildings.RedZiggurat.stateOnCount * 0.03 : 0)
+                + (haveTech('mass', 2) ? buildings.MassDriver.stateOnCount * jobs.Scientist.count * 0.002 : 0));
+
+            gain *= getWorldColliderMulti();
+
+            notes.push(`+${Math.round(gain)} Max Knowledge`);
+        }
+
+
+
+        if (obj === buildings.BlackholeFarReach) {
+            let gain = 0;
+
+            gain += 0.01 * resources.Knowledge.maxQuantity / getWorldColliderMulti();
+
+            notes.push(`+${Math.round(gain)} Max Knowledge`);
+        }
+
+
+
+        if (obj === buildings.StargateTelemetryBeacon) {
+            let gain = 0;
+
+            let base_val = haveTech('telemetry') ? 1200 : 800;
+            if (haveTech('science', 17)) {
+                base_val += buildingsScoutShip.stateOnCount * 25;
+            }
+            gain += (buildings.StargateTelemetryBeacon.stateOnCount * 2 + 1) * base_val;
+
+            gain *= getWorldColliderMulti();
+
+            notes.push(`+${Math.round(gain)} Max Knowledge`);
+        }
+
+
+
+        if (obj === buildings.BadlandsSensorDrone && haveTech('science', 14)) {
+            let gain = 0;
+
+            if (buildings.BadlandsSensorDrone.stateOnCount === 0) {
+                gain += parseFloat(game.actions.portal.prtl_badlands.sensor_drone.effect().match(/(?<=\+)[0-9]+(?= Max Knowledge)/)[0]);
+            } else {
+                gain += parseFloat(game.breakdown.c.Knowledge[game.loc('portal_sensor_drone_title')]) / buildings.BadlandsSensorDrone.stateOnCount;
+            }
+
+            gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[game.loc('city_university')] ?? 0) / (1
+                + buildings.Library.count * 0.02
+                + buildings.MoonObservatory.stateOnCount * 0.05
+                + buildings.BadlandsSensorDrone.stateOnCount * 0.02);
+
+            if (game.global.race['cataclysm']) {
+                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[game.loc('tech_exotic_bd')] ?? 0) / (1
+                    + buildings.BadlandsSensorDrone.stateOnCount * 0.02);
+            } else {
+                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[game.loc('city_biolab')] ?? 0) / (1
+                    + buildings.BadlandsSensorDrone.stateOnCount * 0.02);
+            }
+
+            gain *= getWorldColliderMulti();
+
+            notes.push(`+${Math.round(gain)} Max Knowledge`);
+        }
+
+        
 
         // Other tooltips goes here...
 
