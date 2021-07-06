@@ -9830,7 +9830,7 @@
             }
 
             if (haveTech('science', 15)) {
-                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[loc(game.global.race.universe === 'magic' ? 'tech_sanctum' : 'interstellar_laboratory_title')] ?? 0) / (1
+                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[game.loc(game.global.race.universe === 'magic' ? 'tech_sanctum' : 'interstellar_laboratory_title')] ?? 0) / (1
                     + buildings.Wardenclyffe.count * 0.02);
             }
 
@@ -9897,7 +9897,7 @@
             }
 
             if (game.global.race['cataclysm'] && haveTech('science', 15)) {
-                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[loc(game.global.race.universe === 'magic' ? 'tech_sanctum' : 'interstellar_laboratory_title')] ?? 0) / (1
+                gain += 0.02 * parseFloat(game.breakdown.c.Knowledge[game.loc(game.global.race.universe === 'magic' ? 'tech_sanctum' : 'interstellar_laboratory_title')] ?? 0) / (1
                     + buildings.RedExoticLab.stateOnCount * 0.02);
             }
 
