@@ -9944,7 +9944,7 @@
 
             let base_val = haveTech('telemetry') ? 1200 : 800;
             if (haveTech('science', 17)) {
-                base_val += buildingsScoutShip.stateOnCount * 25;
+                base_val += buildings.ScoutShip.stateOnCount * 25;
             }
             gain += (buildings.StargateTelemetryBeacon.stateOnCount * 2 + 1) * base_val;
 
