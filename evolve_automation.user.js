@@ -1931,7 +1931,7 @@
         SiriusSpaceElevator: new Action("Sirius Space Elevator", "interstellar", "space_elevator", "int_sirius"),
         SiriusGravityDome: new Action("Sirius Gravity Dome", "interstellar", "gravity_dome", "int_sirius"),
         SiriusAscensionMachine: new Action("Sirius Ascension Machine", "interstellar", "ascension_machine", "int_sirius"),
-        SiriusAscensionTrigger: new Action("Sirius Ascension Machine (Complete)", "interstellar", "ascension_trigger", "int_sirius"),
+        SiriusAscensionTrigger: new Action("Sirius Ascension Machine (Complete)", "interstellar", "ascension_trigger", "int_sirius", {smart: true}),
         SiriusAscend: new Action("Sirius Ascend", "interstellar", "ascend", "int_sirius"),
         SiriusThermalCollector: new Action("Sirius Thermal Collector", "interstellar", "thermal_collector", "int_sirius"),
 
@@ -2283,6 +2283,7 @@
           () => true,
           (building) => building._tab !== "city" && building.stateOffCount > 0
             && (building !== buildings.SpireMechBay || !buildings.SpireMechBay.isSmartManaged())
+            && (building !== buildings.RuinsGuardPost || !buildings.RuinsGuardPost.isSmartManaged() || isHellSupressUseful())
             && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()),
           () => "Still have some non operating buildings",
           () => settings.buildingWeightingNonOperating
@@ -2307,13 +2308,13 @@
           () => "Not needed for Vacuum Collapse prestige",
           () => 0
       ],[
-          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension" && (!settings.prestigeAscensionPillar || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel()),
-          (building) => building === buildings.PitMission || building === buildings.RuinsMission,
+          () => settings.prestigeBioseedConstruct && settings.prestigeType === "ascension",
+          (building) => building === buildings.GateMission || ((building === buildings.PitMission || building === buildings.RuinsMission) && isPillarFinished()),
           () => "Not needed for Ascension prestige",
           () => 0
       ],[
           () => settings.prestigeType === "mad" && (haveTech("mad") || (techIds['tech-mad'].isAffordable(true) && techIds['tech-mad'].resourceRequirements.every(req => req.resource.isUnlocked()))),
-          (building) => !building.is.housing && !building.is.garrison && resourceCost(building, resources.Knowledge) <= 0,
+          (building) => !building.is.housing && !building.is.garrison && resourceCost(building, resources.Knowledge) <= 0 && (building !== buildings.OilWell || !game.global.race.terrifying), // Terrifying can't buy oil, keep building rigs
           () => "Awaiting MAD prestige",
           () => settings.buildingWeightingMADUseless
       ],[
@@ -3349,7 +3350,7 @@
         },
 
         get availableGarrison() {
-            return this.currentCityGarrison - this.wounded;
+            return game.global.race['rage'] ? Math.min(this.maxCityGarrison, this.currentSoldiers - this.wounded) : this.currentCityGarrison - this.wounded;
         },
 
         get hellGarrison()  {
@@ -3357,6 +3358,15 @@
         },
 
         launchCampaign(govIndex) {
+            this._garrisonVue.campaign(govIndex);
+        },
+
+        release(govIndex) {
+            if (game.global.civic.foreign["gov" + govIndex].occ) {
+                let occSoldiers = getOccCosts();
+                this.workers += occSoldiers;
+                this.max += occSoldiers;
+            }
             this._garrisonVue.campaign(govIndex);
         },
 
@@ -6200,7 +6210,8 @@
             if ((foreign.gov.anx && foreign.policy !== "Annex") ||
                 (foreign.gov.buy && foreign.policy !== "Purchase") ||
                 (foreign.gov.occ && foreign.policy !== "Occupy")){
-                getVueById("garrison")?.campaign(foreign.id);
+                WarManager.release(foreign.id);
+                foreign.released = true;
             } else if (!foreign.gov.anx && !foreign.gov.buy && !foreign.gov.occ) {
                 SpyManager.performEspionage(foreign.id, espionageMission.id, foreign !== currentTarget);
             }
@@ -6214,8 +6225,8 @@
         }
 
         // If we are not fully ready then return
-        if (m.wounded > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison ||
-            m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison) {
+        if ((m.wounded > (1 - settings.foreignAttackHealthySoldiersPercent / 100) * m.maxCityGarrison && !game.global.race['rage'] ) ||
+            (m.currentCityGarrison < settings.foreignAttackLivingSoldiersPercent / 100 * m.maxCityGarrison && (!settings.foreignProtectSoldiers || settings.foreignMinAdvantage < 75))) {
             return;
     }
 
@@ -6225,7 +6236,7 @@
         let maxBattalion = new Array(5).fill(m.maxCityGarrison);
         if (settings.foreignProtectSoldiers) {
             let armor = ((game.global.race.scales ? 2 : 0) + (game.global.tech.armor ?? 0)) * (game.global.race.armored ? 4 : 1) - (game.global.race.frail ? 1 : 0);
-            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0)) * 5 - tactic)));
+            let protectedBattalion = [5, 10, 25, 50, 999].map((cap, tactic) => (armor >= cap ? Number.MAX_SAFE_INTEGER : ((armor - (game.global.city.ptrait === 'rage' ? 1 : 0)) * (5 - tactic))));
             maxBattalion = maxBattalion.map((garrison, tactic) => Math.min(garrison, protectedBattalion[tactic]));
         }
         maxBattalion[4] = Math.min(maxBattalion[4], settings.foreignMaxSiegeBattalion);
@@ -6266,16 +6277,16 @@
 
         // Not enough healthy soldiers, keep resting
         if (!requiredBattalion || requiredBattalion > m.availableGarrison) {
-            return;
+          return;
         }
 
         // Occupy can pull soldiers from ships, let's make sure it won't happen
-        if (currentTarget.gov.anx || currentTarget.gov.buy || currentTarget.gov.occ) {
+        if (!currentTarget.released && (currentTarget.gov.anx || currentTarget.gov.buy || currentTarget.gov.occ)) {
             // If it occupied currently - we'll get enough soldiers just by unoccupying it
-            m.launchCampaign(currentTarget.id);
-        } else if (requiredTactic === 4 && m.crew > 0) {
-            let occCost = game.global.civic.govern.type === "federation" ? 15 : 20;
-            let missingSoldiers = occCost - (m.availableGarrison - requiredBattalion);
+            m.release(currentTarget.id);
+        }
+        if (requiredTactic === 4 && (m.crew > 0 || currentTarget.policy === "Occupy")) {
+            let missingSoldiers = getOccCosts() - (m.currentCityGarrison - requiredBattalion);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
                 if (!settings.autoHell || !m.initHell() || m.hellSoldiers - m.hellReservedSoldiers < missingSoldiers) {
@@ -7549,11 +7560,15 @@
     }
 
     function isAscensionPrestigeAvailable() {
-        return settings.prestigeAscensionSkipCustom && buildings.SiriusAscend.isUnlocked() && (!settings.prestigeAscensionPillar || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel());
+        return settings.prestigeAscensionSkipCustom && buildings.SiriusAscend.isUnlocked() && isPillarFinished();
     }
 
     function isDemonicPrestigeAvailable() {
         return buildings.SpireTower.count > settings.prestigeDemonicFloor && haveTech("waygate", 3) && (!settings.autoMech || MechManager.mechsPotential <= settings.prestigeDemonicPotential) && techIds["tech-demonic_infusion"].isUnlocked();
+    }
+
+    function isPillarFinished() {
+        return !settings.prestigeAscensionPillar || game.global.race.universe === 'micro' || game.global.pillars[game.global.race.species] >= game.alevel();
     }
 
     function getBlackholeMass() {
@@ -8054,6 +8069,10 @@
         return (30 + (amount - 1) * 2.5) * amount * (game.global.race['emfield'] ? 1.5 : 1);
     }
 
+    function isHellSupressUseful() {
+        return jobs.Archaeologist.count > 0 || jobs.Scarletite.count > 0 || buildings.RuinsArcology.stateOnCount > 0 || buildings.GateInferniteMine.stateOnCount > 0;
+    }
+
     function autoPower() {
         // Only start doing this once power becomes available. Isn't useful before then
         if (!resources.Power.isUnlocked()) {
@@ -8160,6 +8179,10 @@
                         maxStateOn = Math.min(maxStateOn, resources.Oil.getBusyWorkers("space_gas_moon_oil_extractor_title", currentStateOn));
                     }
                 }
+                // Do not enable Ascension Machine whire we're waiting for pillar
+                if (building === buildings.SiriusAscensionTrigger && !isPillarFinished()) {
+                    maxStateOn = 0;
+                }
                 // Disable barracks on bioseed run, if enabled
                 if (building === buildings.Barracks && settings.prestigeEnabledBarracks < 100 && !WarManager.isForeignUnlocked() && buildings.GasSpaceDockShipSegment.count < 90 && buildings.DwarfWorldController.count < 1) {
                     maxStateOn = Math.ceil(maxStateOn * settings.prestigeEnabledBarracks / 100);
@@ -8192,13 +8215,20 @@
                         maxStateOn = Math.min(maxStateOn, currentStateOn + Math.ceil(mineAdjust));
                     }
                 }
-                // Disable uselss Guard Post
+                // Disable useless Guard Post
                 if (building === buildings.RuinsGuardPost) {
-                    let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
-                    // 1 extra to workaround rounding errors
-                    let postAdjust = Math.max((5001 - poly.hellSupression("ruins").rating) / postRating, (7501 - poly.hellSupression("gate").rating) / postRating);
-                    // We're reserving just one soldier for Guard Posts, so let's increase them by 1
-                    maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
+                    if (isHellSupressUseful()) {
+                        let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
+                        // 1 extra to workaround rounding errors
+                        let postAdjust = (5001 - poly.hellSupression("ruins").rating) / postRating;
+                        if (haveTech('hell_gate')) {
+                            postAdjust = Math.max(postAdjust, (7501 - poly.hellSupression("gate").rating) / postRating);
+                        }
+                        // We're reserving just one soldier for Guard Posts, so let's increase them by 1
+                        maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
+                    } else {
+                        maxStateOn = 0;
+                    }
                 }
                 // Disable Waygate once it cleared, or if we're going to use bomb, or current potential is too hight
                 if (building === buildings.SpireWaygate && (settings.prestigeDemonicBomb || haveTech("waygate", 3) || (settings.autoMech && MechManager.mechsPotential > settings.mechWaygatePotential))) {
@@ -9670,7 +9700,8 @@
         // Init lookup table for buildings
         for (let building of Object.values(buildings)){
             buildingIds[building._vueBinding] = building;
-            if (building.isMission()) {
+            // Don't force building Jump Ship and Pit Assault, they're prety expensive at the moment when unlocked.
+            if (building.isMission() && building !== buildings.BlackholeJumpShip && building !== buildings.PitAssaultForge) {
                 state.missionBuildingList.push(building);
             }
         }
@@ -10001,7 +10032,9 @@
 
         // Other tooltips goes here...
 
-        if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargets.includes(obj)) {
+
+
+        if ((obj instanceof Technology || (!settings.autoARPA && obj._tab === "arpa") || (!settings.autoBuild && obj._tab !== "arpa")) && !state.queuedTargets.includes(obj) && !state.triggerTargets.includes(obj)) {
             let conflict = getCostConflict(obj);
             if (conflict) {
                 notes.push(`Conflicts with ${conflict.target.title} for ${conflict.res.name} (${conflict.cause})`);
@@ -13955,6 +13988,10 @@
 
     function resourceCost(obj, resource) {
         return obj.resourceRequirements.find(requirement => requirement.resource === resource)?.quantity ?? 0;
+    }
+
+    function getOccCosts() {
+        return game.global.civic.govern.type === "federation" ? 15 : 20;
     }
 
     function getGovName(govIndex) {
