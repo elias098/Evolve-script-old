@@ -823,6 +823,8 @@
                     if (resourceAmount > 0) {
                         this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
                     }
+
+                    if (resourceName === "Elerium") state.eleriumCosts.push(resourceAmount);
                 }
             }
         }
@@ -1576,7 +1578,7 @@
     const governors = ["soldier", "criminal", "entrepreneur", "educator", "spiritual", "bluecollar", "noble", "media", "sports", "bureaucrat"];
     const evolutionSettingsToStore = ["userEvolutionTarget", "prestigeType", ...challenges.map(c => "challenge_" + c[0].id)];
     const prestigeNames = {mad: "MAD", bioseed: "Bioseed", cataclysm: "Cataclysm", vacuum: "Vacuum", whitehole: "Whitehole", ascension: "Ascension", demonic: "Infusion"};
-    const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market"];
+    const logIgnore = ["food", "lumber", "stone", "chrysotile", "slaughter", "s_alter", "slave_market", "horseshoe"];
     const galaxyRegions = ["gxy_stargate", "gxy_gateway", "gxy_gorddon", "gxy_alien1", "gxy_alien2", "gxy_chthonian"];
     const settingsSections = ["general", "prestige", "evolution", "research", "market", "storage", "production", "war", "hell", "fleet", "job", "building", "project", "government", "logging", "minorTrait", "weighting", "ejector", "planet", "mech"];
     const unlimitedJobs = ["unemployed", "hunter", "farmer", "lumberjack", "quarry_worker", "crystal_miner", "scavenger", "forager"]; // this.definition.max holds zero at evolution stage, and that can mess with settings gui
@@ -1626,6 +1628,8 @@
         missionBuildingList: [],
         filterRegExp: null,
         evolutionTarget: null,
+
+        eleriumCosts: []
     };
 
     // Class instances
@@ -1875,7 +1879,7 @@
         BeltIronShip: new Action("Belt Iron Mining Ship", "space", "iron_ship", "spc_belt", {smart: true}),
 
         DwarfMission: new Action("Dwarf Mission", "space", "dwarf_mission", "spc_dwarf"),
-        DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", "spc_dwarf"),
+        DwarfEleriumContainer: new Action("Dwarf Elerium Storage", "space", "elerium_contain", "spc_dwarf", {smart: true}),
         DwarfEleriumReactor: new Action("Dwarf Elerium Reactor", "space", "e_reactor", "spc_dwarf"),
         DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
         DwarfWorldController: new Action("Dwarf World Collider (Complete)", "space", "world_controller", "spc_dwarf", {knowledge: true}),
@@ -1948,7 +1952,7 @@
 
         StargateStation: new Action("Stargate Station", "galaxy", "gateway_station", "gxy_stargate"),
         StargateTelemetryBeacon: new Action("Stargate Telemetry Beacon", "galaxy", "telemetry_beacon", "gxy_stargate", {knowledge: true}),
-        StargateDepot: new Action("Stargate Depot", "galaxy", "gateway_depot", "gxy_stargate"),
+        StargateDepot: new Action("Stargate Depot", "galaxy", "gateway_depot", "gxy_stargate", {smart: true}),
         StargateDefensePlatform: new Action("Stargate Defense Platform", "galaxy", "defense_platform", "gxy_stargate"),
 
         GorddonMission: new Action("Gorddon Mission", "galaxy", "gorddon_mission", "gxy_gorddon"),
@@ -3974,6 +3978,7 @@
         statePriorityList: [],
 
         updateBuildings() {
+            state.eleriumCosts = [];
             for (let i = 0; i < this.priorityList.length; i++){
                 let building = this.priorityList[i];
                 building.updateResourceRequirements();
@@ -6053,6 +6058,13 @@
         }
         if (garrisonAvailable && foreignAvailable) {
             autoBattle(foreigns); // Invalidates garrison, and adds unaccounted amount of resources after attack
+            if (game.global.race['rage']) {
+                for (let i = 0; i < 2; i++) {
+                    game.updateDebugData();
+                    WarManager.updateData();
+                    autoBattle(updateForeigns());
+                }
+            }
         }
     }
 
@@ -8122,6 +8134,20 @@
         let manageTransport = buildings.LakeTransport.isSmartManaged() && buildings.LakeBireme.isSmartManaged();
         let manageSpire = buildings.SpirePort.isSmartManaged() && buildings.SpireBaseCamp.isSmartManaged() && buildings.SpireMechBay.isSmartManaged();
 
+        let depotStateOn = 0;
+        let containerStateOn = 0;
+        if (buildings.DwarfEleriumContainer.count > 0 || buildings.StargateDepot.count > 0) {
+            let container = getStorage("Elerium", buildings.DwarfEleriumContainer, "space_dwarf_elerium_contain_title", true);
+            let depot = getStorage("Elerium", buildings.StargateDepot, "galaxy_gateway_depot", true);
+
+            let baseElerium = resources.Elerium.maxQuantity - (container * buildings.DwarfEleriumContainer.stateOnCount) - (depot * buildings.StargateDepot.stateOnCount);
+            let maxElerium = resources.Elerium.maxQuantity + (container * buildings.DwarfEleriumContainer.stateOffCount) + (depot * buildings.StargateDepot.stateOffCount);
+            let maxAffordable = Math.max.apply(Math, state.eleriumCosts.filter(cost => cost <= maxElerium));
+
+            depotStateOn = Math.min(buildings.StargateDepot.count, Math.max(0, Math.ceil((maxAffordable - baseElerium) / depot)));
+            containerStateOn = Math.min(buildings.DwarfEleriumContainer.count, Math.max(0, Math.ceil((maxAffordable - (baseElerium + depot * depotStateOn)) / container)));
+        }
+
         // Start assigning buildings from the top of our priority list to the bottom
         for (let i = 0; i < buildingList.length; i++) {
             let building = buildingList[i];
@@ -8139,6 +8165,14 @@
                 }
             } else if (building.powered > 0) {
                 maxStateOn = Math.min(maxStateOn, availablePower / building.powered);
+            }
+
+            if (building === buildings.StargateDepot) {
+                maxStateOn = Math.min(maxStateOn, depotStateOn);
+            }
+
+            if (building === buildings.DwarfEleriumContainer) {
+                maxStateOn = Math.min(maxStateOn, containerStateOn);
             }
 
             // Ascension Trigger info
@@ -13988,6 +14022,13 @@
 
     function resourceCost(obj, resource) {
         return obj.resourceRequirements.find(requirement => requirement.resource === resource)?.quantity ?? 0;
+    }
+
+    function getStorage(resource, building, title, powered = false) {
+        let count = powered ? building.stateOnCount : building.count;
+        return (count === 0
+          ? parseFloat(building.definition.effect().match(new RegExp(`(?<=\\+)[0-9]+(?= Max ${resource})`))[0])
+          : parseFloat(game.breakdown.c[resource][game.loc(title)]) / count);
     }
 
     function getOccCosts() {
