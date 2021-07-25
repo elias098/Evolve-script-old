@@ -245,7 +245,7 @@
 
             this.storeOverflow = false;
             this.storagePriority = 0;
-            this.storageRequired = 0;
+            this.storageRequired = 1;
             this.autoStorageEnabled = true;
             this._autoCratesMax = -1;
             this._autoContainersMax = -1;
@@ -912,8 +912,8 @@
         }
 
         getMissingSupport() {
-            // We're going to build Mech Bays with no support, to enable them later
-            if (this === buildings.SpireMechBay && this.autoStateSmart) {
+            // We're going to build Spire things with no support, to enable them later
+            if ((this === buildings.SpirePort || this === buildings.SpireBaseCamp || this === buildings.SpireMechBay) && this.autoStateSmart) {
                 return null;
             }
 
@@ -1884,6 +1884,7 @@
         DwarfWorldCollider: new Action("Dwarf World Collider", "space", "world_collider", "spc_dwarf"),
         DwarfWorldController: new Action("Dwarf World Collider (Complete)", "space", "world_controller", "spc_dwarf", {knowledge: true}),
         /*
+        DwarfShipyard: new Action("Dwarf Ship Yard", "space", "shipyard", "spc_dwarf"),
         TitanMission: new Action("Titan Mission", "space", "titan_mission", "spc_titan"),
         TitanSpaceport: new Action("Titan Spaceport", "space", "titan_spaceport", "spc_titan"),
         EnceladusMission: new Action("Enceladus Mission", "space", "enceladus_mission", "spc_enceladus"),
@@ -2028,7 +2029,7 @@
 
     var linkedBuildings = [
         [buildings.LakeTransport, buildings.LakeBireme],
-        [buildings.SpirePort, buildings.SpireBaseCamp, buildings.SpireMechBay],
+        [buildings.SpirePort, buildings.SpireBaseCamp],
     ]
 
     var projects = {
@@ -2110,7 +2111,7 @@
       ],[
           () => settings.autoMech && settings.mechBuild !== "none" && settings.buildingMechsFirst && buildings.SpireMechBay.count > 0 && buildings.SpireMechBay.stateOffCount === 0,
           (building) => {
-              if (building === buildings.SpirePurifier || building === buildings.SpirePort || building === buildings.SpireBaseCamp || building === buildings.SpireMechBay) {
+              if (resourceCost(building, resources.Supply) > 0) {
                   let mechBay = game.global.portal.mechbay;
                   let newSize = !haveTask("mech") ? settings.mechBuild === "random" ? MechManager.getPreferredSize() : mechBay.blueprint.size : "titan";
                   let [newGems, newSupply, newSpace] = MechManager.getMechCost({size: newSize});
@@ -2286,6 +2287,8 @@
       ],[
           () => true,
           (building) => building._tab !== "city" && building.stateOffCount > 0
+            && (building !== buildings.SpirePort || !buildings.SpirePort.isSmartManaged())
+            && (building !== buildings.SpireBaseCamp || !buildings.SpireBaseCamp.isSmartManaged())
             && (building !== buildings.SpireMechBay || !buildings.SpireMechBay.isSmartManaged())
             && (building !== buildings.RuinsGuardPost || !buildings.RuinsGuardPost.isSmartManaged() || isHellSupressUseful())
             && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()),
@@ -3709,7 +3712,6 @@
                 this.bestSize = Object.values(this.bestMech).filter(m => m.size !== 'collector').sort((a, b) => b.efficiency - a.efficiency).map(m => m.size);
 
                 // Redraw added label of Mech Lab after change of floor
-                removeMechInfo();
                 createMechInfo();
             }
 
@@ -4073,7 +4075,7 @@
                     project.weighting = 0;
                     project.extraDescription = "AutoBuild disabled<br>";
                 }
-                if (project.count >= project.autoMax) {
+                if (project.count >= project.autoMax && (project !== projects.ManaSyphon || settings.prestigeType !== 'vacuum')) {
                     project.weighting = 0;
                     project.extraDescription = "Maximum amount reached<br>";
                 }
@@ -5042,6 +5044,7 @@
         BuildingManager.addBuildingToPriorityList(buildings.StargateDepot);
         BuildingManager.addBuildingToPriorityList(buildings.DwarfEleriumContainer);
 
+        BuildingManager.addBuildingToPriorityList(buildings.GasMoonOilExtractor);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronMission);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronStellarForge);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronMiner);
@@ -5053,7 +5056,6 @@
         BuildingManager.addBuildingToPriorityList(buildings.RockQuarry);
         BuildingManager.addBuildingToPriorityList(buildings.Sawmill);
         BuildingManager.addBuildingToPriorityList(buildings.GasMining);
-        BuildingManager.addBuildingToPriorityList(buildings.GasMoonOilExtractor);
         BuildingManager.addBuildingToPriorityList(buildings.NeutronCitadel);
         BuildingManager.addBuildingToPriorityList(buildings.Mine);
         BuildingManager.addBuildingToPriorityList(buildings.CoalMine);
@@ -5067,6 +5069,9 @@
 
         // And Blood Stone
         buildings.SpireWaygate.autoBuildEnabled = false;
+
+        buildings.ForgeHorseshoe._autoMax = 20;
+        buildings.RedForgeHorseshoe._autoMax = 20;
     }
 
     function resetProjectSettings() {
@@ -5097,7 +5102,7 @@
     function resetProductionSettings() {
         settings.productionChrysotileWeight = 2;
         settings.productionFoundryWeighting = "demanded";
-        settings.productionWaitMana = true;
+        settings.productionRitualManaUse = 0.5;
         settings.productionSmelting = "storage";
         settings.productionFactoryMinIngredients = 0.01;
     }
@@ -5390,7 +5395,7 @@
 
         addSetting("productionChrysotileWeight", 2);
         addSetting("productionFoundryWeighting", "demanded");
-        addSetting("productionWaitMana", true);
+        addSetting("productionRitualManaUse", 0.5);
         addSetting("productionSmelting", "storage");
         addSetting("productionFactoryMinIngredients", 0.01);
 
@@ -5605,7 +5610,7 @@
         }
         settings.challenge_plasmid = settings.challenge_mastery || settings.challenge_plasmid; // Merge challenge settings
         // Remove old settings
-        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower"].forEach(id => delete settings[id]);
+        ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana"].forEach(id => delete settings[id]);
         ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settings[id + index]));
         Object.values(resources).forEach(resource => delete settings['res_storage_w_' + resource.id]);
         Object.values(projects).forEach(project => delete settings['arpa_ignore_money_' + project.id]);
@@ -6134,7 +6139,7 @@
             }
 
             // Do not attack if policy set to influence, or we're ready to unify
-            if (currentTarget.policy === "Influence" || readyToUnify) {
+            if (currentTarget.policy === "Influence" || (readyToUnify && currentTarget.policy !== "Occupy")) {
                 currentTarget = null;
             }
         }
@@ -6288,7 +6293,8 @@
 
         if (requiredTactic !== 4) {
             // If we don't need to occupy our target, then let's find best tactic for plundering
-            for (let i = 4; i >= 0; i--) {
+            // Never try siege if it can mess with unification
+            for (let i = !settings.foreignUnification || settings.foreignOccupyLast ? 4 : 3; i >= 0; i--) {
                 let soldiersMin = m.getSoldiersForAdvantage(settings.foreignMinAdvantage, i, currentTarget.id);
                 if (soldiersMin <= maxBattalion[i]) {
                     requiredBattalion = Math.max(soldiersMin, Math.min(maxBattalion[i], m.availableGarrison, m.getSoldiersForAdvantage(settings.foreignMaxAdvantage, i, currentTarget.id) - 1));
@@ -6308,7 +6314,7 @@
             // If it occupied currently - we'll get enough soldiers just by unoccupying it
             m.release(currentTarget.id);
         }
-        if (requiredTactic === 4 && (m.crew > 0 || currentTarget.policy === "Occupy")) {
+        if (requiredTactic === 4 && m.crew > 0) {
             let missingSoldiers = getOccCosts() - (m.currentCityGarrison - requiredBattalion);
             if (missingSoldiers > 0) {
                 // Not enough soldiers in city, let's try to pull them from hell
@@ -6925,23 +6931,25 @@
             pylonAdjustments[spell.id] = 0;
             resources.Mana.rateOfChange += RitualManager.manaCost(RitualManager.currentSpells(spell));
         }
+        let manaToUse = resources.Mana.rateOfChange * (resources.Mana.storageRatio > 0.99 ? 1 : settings.productionRitualManaUse);
 
-        if (!settings.productionWaitMana || resources.Mana.isCapped()) {
-            let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
-            let remainingSpells = spells.slice();
-            while(remainingSpells.length > 0) {
-                let spell = remainingSpells.sort(spellSorter)[0];
-                let amount = pylonAdjustments[spell.id];
-                let cost = RitualManager.manaCost(amount + 1) - RitualManager.manaCost(amount);
+        let usableMana = manaToUse;
 
-                if (cost <= resources.Mana.rateOfChange) {
-                    pylonAdjustments[spell.id] = amount + 1;
-                    resources.Mana.rateOfChange -= cost;
-                } else {
-                    remainingSpells.shift();
-                }
+        let spellSorter = (a, b) => ((pylonAdjustments[a.id] / a.weighting) - (pylonAdjustments[b.id] / b.weighting)) || b.weighting - a.weighting;
+        let remainingSpells = spells.slice();
+        while(remainingSpells.length > 0) {
+            let spell = remainingSpells.sort(spellSorter)[0];
+            let amount = pylonAdjustments[spell.id];
+            let cost = RitualManager.manaCost(amount + 1) - RitualManager.manaCost(amount);
+
+            if (cost <= manaToUse) {
+                pylonAdjustments[spell.id] = amount + 1;
+                manaToUse -= cost;
+            } else {
+                remainingSpells.shift();
             }
         }
+        resources.Mana.rateOfChange - (usableMana - manaToUse);
 
         let pylonDeltas = spells.map((spell) => pylonAdjustments[spell.id] - RitualManager.currentSpells(spell));
 
@@ -8143,7 +8151,7 @@
         }
 
         let manageTransport = buildings.LakeTransport.isSmartManaged() && buildings.LakeBireme.isSmartManaged();
-        let manageSpire = buildings.SpirePort.isSmartManaged() && buildings.SpireBaseCamp.isSmartManaged() && buildings.SpireMechBay.isSmartManaged();
+        let manageSpire = buildings.SpirePort.isSmartManaged() && buildings.SpireBaseCamp.isSmartManaged();
 
         let depotStateOn = 0;
         let containerStateOn = 0;
@@ -8271,11 +8279,11 @@
                 // Disable useless Guard Post
                 if (building === buildings.RuinsGuardPost) {
                     if (isHellSupressUseful()) {
-                        let postRating = game.armyRating(1, "hellArmy") * (game.global.race['holy'] ? 1.25 : 1);
-                        // 1 extra to workaround rounding errors
-                        let postAdjust = (5001 - poly.hellSupression("ruins").rating) / postRating;
+                        let postRating = game.armyRating(1, "hellArmy", 0) * (game.global.race['holy'] ? 1.25 : 1);
+                        // 1 extra power to compensate rounding errors, 100 extra to compensate heling drinf of rage races
+                        let postAdjust = ((game.global.race['rage'] ? 5100 : 5001) - poly.hellSupression("ruins").rating) / postRating;
                         if (haveTech('hell_gate')) {
-                            postAdjust = Math.max(postAdjust, (7501 - poly.hellSupression("gate").rating) / postRating);
+                            postAdjust = Math.max(postAdjust, ((game.global.race['rage'] ? 7600 : 7501) - poly.hellSupression("gate").rating) / postRating);
                         }
                         // We're reserving just one soldier for Guard Posts, so let's increase them by 1
                         maxStateOn = Math.min(maxStateOn, currentStateOn + 1, currentStateOn + Math.ceil(postAdjust));
@@ -8406,9 +8414,15 @@
         }
 
         if (manageSpire && resources.Spire_Support.rateOfChange > 0) {
-            let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
-            let buildAllowed = (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) > buildings.SpireMechBay.count);
+            // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
+            // And also let autoMech do minimum preparation, so we won't stuck with near zero potential
+            let buildAllowed = buildings.SpireMechBay.isSmartManaged()
+              && (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) > buildings.SpireMechBay.count)
+              && (!settings.autoMech || !MechManager.isActive)
+              && game.global.portal.transport.cargo.used > 0
+              && game.global.portal.transport.cargo.max > 0;
+
             const spireBuildable = (building) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money);
             let mechBuildable = spireBuildable(buildings.SpireMechBay);
             let puriBuildable = spireBuildable(buildings.SpirePurifier) && buildings.SpirePurifier.stateOffCount === 0;
@@ -8417,21 +8431,35 @@
 
             let nextMechCost = mechBuildable ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
             let nextPuriCost = puriBuildable && mechBuildable && (portBuildable || campBuildable) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
+            let maxBay = Math.min(buildings.SpireMechBay.count, spireSupport);
             let maxPorts = portBuildable ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
             let maxCamps = campBuildable ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
 
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
-            let canBuild = (bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost) && game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0 && (!settings.autoMech || !MechManager.isActive);
-
-            for (let targetMech = Math.min(buildings.SpireMechBay.count, spireSupport); targetMech >= 0; targetMech--) {
+            let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
+            for (let targetMech = maxBay; targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
-                if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost || targetPort > buildings.SpirePort.count || targetCamp > buildings.SpireBaseCamp.count) {
-                    buildings.SpireMechBay.tryAdjustState(targetMech - buildings.SpireMechBay.stateOnCount);
-                    buildings.SpirePort.tryAdjustState(targetPort - buildings.SpirePort.stateOnCount);
-                    buildings.SpireBaseCamp.tryAdjustState(targetCamp - buildings.SpireBaseCamp.stateOnCount);
+
+                let storageUpgrade =
+                    targetPort > buildings.SpirePort.count ? buildings.SpirePort :
+                    targetCamp > buildings.SpireBaseCamp.count ? buildings.SpireBaseCamp :
+                    null;
+                if (storageUpgrade) {
+                    let storageCost = resourceCost(storageUpgrade, resources.Supply);
+                    for (let i = maxBay; i >= 0; i--) {
+                        let [storageSupplies, storagePort, storageCamp] = getBestSupplyRatio(spireSupport - i, maxPorts, maxCamps);
+                        if (storageSupplies >= storageCost) {
+                            adjustSpire(i, storagePort, storageCamp);
+                            break;
+                        }
+                    }
+                    break;
+                }
+                if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost) {
+                    adjustSpire(targetMech, targetPort, targetCamp);
                     break;
                 }
             }
@@ -8455,6 +8483,12 @@
                 break;
             }
         }
+    }
+
+    function adjustSpire(mech, port, camp) {
+        buildings.SpireMechBay.tryAdjustState(mech - buildings.SpireMechBay.stateOnCount);
+        buildings.SpirePort.tryAdjustState(port - buildings.SpirePort.stateOnCount);
+        buildings.SpireBaseCamp.tryAdjustState(camp - buildings.SpireBaseCamp.stateOnCount);
     }
 
     function getBestSupplyRatio(support, maxPorts, maxCamps) {
@@ -9253,7 +9287,11 @@
             let powerLost = 0;
 
             // Get list of inefficient mech
-            let scrapEfficiency = lastFloor ? Math.min(settings.mechScrapEfficiency, 1) : settings.mechScrapEfficiency;
+            let scrapEfficiency =
+              baySpace === 0 && resources.Supply.storageRatio > 0.9 ? 0 :
+              lastFloor ? Math.min(settings.mechScrapEfficiency, 1) :
+              settings.mechScrapEfficiency;
+
             let badMechList = m.activeMechs.filter(mech => {
                 if (mech.infernal || mech.power >= m.bestMech[mech.size].power) {
                     return false;
@@ -12685,7 +12723,7 @@
 
     function updateProductionTablePylon(currentNode) {
         addStandardHeading(currentNode, "Pylon");
-        addSettingsToggle(currentNode, "productionWaitMana", "Wait for full mana", "Cast rituals only with full mana");
+        addSettingsNumber(currentNode, "productionRitualManaUse", "Mana income used", "Income portion to use on rituals. Setting to 1 is not recomended, as it will halt mana regeneration. Applied only when mana not capped - with capped mana script will always use all income.");
 
         currentNode.append(`
           <table style="width:100%">
@@ -13616,7 +13654,8 @@
             }
             let timePassed = state.scriptTick - state.soulGemIncomes[0].tick;
             let rate = gems / timePassed * 3600;
-            resources.Soul_Gem.rateOfChange = gems / timePassed;
+            // Apply game speed to sync with other incomes
+            resources.Soul_Gem.rateOfChange = gems / timePassed * gameTicksPerSecond("mid");
             $("#resSoul_Gem span:eq(2)").text(`${getNiceNumber(rate)} /h`);
         }
 
@@ -13648,6 +13687,7 @@
 
     function createMechInfo() {
         if (MechManager.initLab()) {
+            removeMechInfo();
             $('#mechList .mechRow').each(function(index) {
                 let mech = game.global.portal.mechbay.mechs[index];
                 let stats = MechManager.getMechStats(mech);
@@ -13667,8 +13707,8 @@
     function startMechObserver() {
         stopMechObserver();
 
-        MechManager.mechObserver.observe(document.getElementById("mechLab"), {childList: true});
         createMechInfo();
+        MechManager.mechObserver.observe(document.getElementById("mechLab"), {childList: true});
     }
 
     function stopMechObserver() {
