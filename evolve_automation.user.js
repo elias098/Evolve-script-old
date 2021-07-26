@@ -1238,6 +1238,8 @@
                     if (resourceAmount > 0) {
                         this.resourceRequirements.push(new ResourceRequirement(resources[resourceName], resourceAmount));
                     }
+
+                    if (resourceName === "Elerium") state.eleriumCosts.push(resourceAmount);
                 }
             }
         }
@@ -2291,7 +2293,8 @@
             && (building !== buildings.SpireBaseCamp || !buildings.SpireBaseCamp.isSmartManaged())
             && (building !== buildings.SpireMechBay || !buildings.SpireMechBay.isSmartManaged())
             && (building !== buildings.RuinsGuardPost || !buildings.RuinsGuardPost.isSmartManaged() || isHellSupressUseful())
-            && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()),
+            && (building !== buildings.BadlandsAttractor || !buildings.BadlandsAttractor.isSmartManaged()
+            && (building !== buildings.StargateDepot || !buildings.StargateDepot.isSmartManaged())),
           () => "Still have some non operating buildings",
           () => settings.buildingWeightingNonOperating
       ],[
@@ -3989,7 +3992,6 @@
         statePriorityList: [],
 
         updateBuildings() {
-            state.eleriumCosts = [];
             for (let i = 0; i < this.priorityList.length; i++){
                 let building = this.priorityList[i];
                 building.updateResourceRequirements();
@@ -6075,10 +6077,18 @@
         if (garrisonAvailable && foreignAvailable) {
             autoBattle(foreigns); // Invalidates garrison, and adds unaccounted amount of resources after attack
             if (game.global.race['rage']) {
-                for (let i = 0; i < 2; i++) {
+                /*for (let i = 0; i < 10; i++) {
                     game.updateDebugData();
                     WarManager.updateData();
                     autoBattle(updateForeigns());
+                }*/
+
+                let i = 0;
+                game.updateDebugData();
+                WarManager.updateData();
+                while (i++ < 10 && autoBattle(updateForeigns())) {
+                    game.updateDebugData();
+                    WarManager.updateData();
                 }
             }
         }
@@ -6348,6 +6358,8 @@
         GameLog.logSuccess(GameLog.Types.attack, `Launching ${campaignTitle} campaign against ${getGovName(currentTarget.id)} with ${currentTarget.gov.spy < 1 ? "~" : ""}${advantagePercent}% advantage.`);
 
         m.launchCampaign(currentTarget.id);
+
+        return true;
     }
 
     function autoHell() {
@@ -8153,9 +8165,17 @@
         let manageTransport = buildings.LakeTransport.isSmartManaged() && buildings.LakeBireme.isSmartManaged();
         let manageSpire = buildings.SpirePort.isSmartManaged() && buildings.SpireBaseCamp.isSmartManaged();
 
+
+
+        //
+        //
+        //          Add smart management
+        //
+        //
+
         let depotStateOn = 0;
         let containerStateOn = 0;
-        if (buildings.DwarfEleriumContainer.count > 0 || buildings.StargateDepot.count > 0) {
+        if ((buildings.DwarfEleriumContainer.count > 0 && buildings.DwarfEleriumContainer.isSmartManaged()) || (buildings.StargateDepot.count > 0 && buildings.StargateDepot.isSmartManaged())) {
             let container = getStorage("Elerium", buildings.DwarfEleriumContainer, "space_dwarf_elerium_contain_title", true);
             let depot = getStorage("Elerium", buildings.StargateDepot, "galaxy_gateway_depot", true);
 
@@ -9712,6 +9732,7 @@
             resources[id].storageRequired = 1;
             resources[id].requestedQuantity = 0;
         }
+        state.eleriumCosts = [];
         updatePriorityTargets();  // Set queuedTargets and triggerTargets
         BuildingManager.updateBuildings(); // Set obj.resourceRequirements
         ProjectManager.updateProjects(); // Set obj.resourceRequirements, uses triggerTargets
