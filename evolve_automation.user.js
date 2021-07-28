@@ -934,7 +934,7 @@
 
         getUselessSupport() {
             // Starbase and Habitats are exceptions, they're always useful
-            if (this === buildings.GatewayStarbase || this === buildings.AlphaHabitat) {
+            if (this === buildings.GatewayStarbase || this === buildings.AlphaHabitat || this === buildings.StargateTelemetryBeacon) {
                 return null;
             }
 
