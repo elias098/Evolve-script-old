@@ -33,6 +33,17 @@
 //   All settings can be reset to default at once by importing {} as script settings.
 //   Autoclicker can trivialize many aspects of the game, and ruin experience. Spoil your game at your own risk!
 
+
+// Add jquery ui for nwjs and zoom out
+if (!jQuery.ui) {
+  let el = document.createElement("script");
+  el.src = "https://code.jquery.com/ui/1.12.1/jquery-ui.min.js";
+  document.body.appendChild( el );
+}
+
+nw.Window.get().zoomLevel = -0.6;
+
+
 (function($) {
     'use strict';
     var settings = JSON.parse(localStorage.getItem('settings')) ?? {};
@@ -4544,6 +4555,8 @@
     }
 
     function resetHellSettings() {
+        settings.disableHell = false;
+        settings.maxSoulGems = 0;
         settings.hellTurnOffLogMessages = true;
         settings.hellHandlePatrolCount = true;
         settings.hellHomeGarrison = 10;
@@ -5501,6 +5514,8 @@
         addSetting("foreignPolicySuperior", "Sabotage");
         addSetting("foreignPolicyRival", "Sabotage");
 
+        addSetting("disableHell", false)
+        addSetting("maxSoulGems", 0)
         addSetting("hellTurnOffLogMessages", true);
         addSetting("hellHandlePatrolCount", true);
         addSetting("hellHomeGarrison", 10);
@@ -6365,6 +6380,14 @@
     function autoHell() {
         let m = WarManager;
         if (!m.initGarrison() || !m.initHell()) {
+            return;
+        }
+
+        if (settings.disableHell || (settings.prestigeType === "ascension" && settings.maxSoulGems && resources.Soul_Gem.currentQuantity >= settings.maxSoulGems)) {
+            m.hellAttractorMax = 0;
+            m.removeHellPatrolSize(25000);
+            m.removeHellPatrol(25000);
+            m.removeHellGarrison(25000);
             return;
         }
 
@@ -11826,6 +11849,8 @@
         currentNode.empty().off("*");
 
         // Entering Hell
+        addSettingsToggle(currentNode, "disableHell", "Disable Hell", "Disables autoHell and sets attractor beacons to 0");
+        addSettingsNumber(currentNode, "maxSoulGems", "Max soul gems in ascension", "Disables autohell if the soul gem limit is reached in an ascension. 0 to never disable");
         addSettingsHeader1(currentNode, "Entering Hell");
         addSettingsToggle(currentNode, "hellTurnOffLogMessages", "Turn off patrol and surveyor log messages", "Automatically turns off the hell patrol and surveyor log messages");
         addSettingsToggle(currentNode, "hellHandlePatrolCount", "Automatically enter hell and adjust patrol count and hell garrison size", "Sets patrol count according to required garrison and patrol size");
