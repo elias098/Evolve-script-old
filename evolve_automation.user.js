@@ -8284,9 +8284,13 @@ nw.Window.get().zoomLevel = -0.6;
                     }
                 }
                 // Do not enable Ascension Machine whire we're waiting for pillar
-                if (building === buildings.SiriusAscensionTrigger && !isPillarFinished()) {
-                    maxStateOn = 0;
+                //if (building === buildings.SiriusAscensionTrigger && !isPillarFinished()) {
+                //     maxStateOn = 0;currentStateOn
+                //}maxStateOn = currentStateOn;
+                if (building === buildings.SiriusAscensionTrigger) {
+                    maxStateOn = currentStateOn;
                 }
+
                 // Disable barracks on bioseed run, if enabled
                 if (building === buildings.Barracks && settings.prestigeEnabledBarracks < 100 && !WarManager.isForeignUnlocked() && buildings.GasSpaceDockShipSegment.count < 90 && buildings.DwarfWorldController.count < 1) {
                     maxStateOn = Math.ceil(maxStateOn * settings.prestigeEnabledBarracks / 100);
@@ -8431,6 +8435,8 @@ nw.Window.get().zoomLevel = -0.6;
 
             if (building === buildings.NeutronCitadel) {
                 availablePower -= getCitadelConsumption(maxStateOn);
+            } else if (building === buildings.SiriusAscensionTrigger) {
+                availablePower -= evolve.actions.interstellar.int_sirius.ascension_trigger.powered() * maxStateOn;
             } else {
                 availablePower -= building.powered * maxStateOn;
             }
