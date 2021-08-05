@@ -34,6 +34,8 @@
 //   Autoclicker can trivialize many aspects of the game, and ruin experience. Spoil your game at your own risk!
 
 
+fs = require('fs');
+
 // Add jquery ui for nwjs and zoom out
 if (!jQuery.ui) {
   let el = document.createElement("script");
@@ -41,8 +43,28 @@ if (!jQuery.ui) {
   document.body.appendChild( el );
 }
 
-nw.Window.get().zoomLevel = -0.6;
+let win = nw.Window.get();
+win.zoomLevel = -0.6;
 
+win.on('close', function() {
+    try {
+        let ts = Date.now();
+
+        let date_ob = new Date(ts);
+        let date = date_ob.getDate();
+        let month = date_ob.getMonth() + 1;
+        let year = date_ob.getFullYear();
+        let hour = date_ob.getHours();
+        let minute = date_ob.getMinutes();
+        let second = date_ob.getSeconds();
+
+        let data = `${hour}:${minute}:${second}\n\nsave:\n${win.window.exportGame()}\n\nscript settings:\n${win.window.localStorage.getItem('settings') ?? ""}\n\n\n\n\n`
+        fs.appendFileSync(`./save/save${date}-${month}-${year}.txt`, data);
+    } catch (err) {
+        alert(err)
+    }
+    win.close(true);
+});
 
 (function($) {
     'use strict';
@@ -6385,9 +6407,11 @@ nw.Window.get().zoomLevel = -0.6;
 
         if (settings.disableHell || (settings.prestigeType === "ascension" && settings.maxSoulGems && resources.Soul_Gem.currentQuantity >= settings.maxSoulGems)) {
             m.hellAttractorMax = 0;
-            m.removeHellPatrolSize(25000);
-            m.removeHellPatrol(25000);
-            m.removeHellGarrison(25000);
+            if (m.hellSoldiers > 0) {
+                m.removeHellPatrolSize(25000);
+                m.removeHellPatrol(25000);
+                m.removeHellGarrison(25000);
+            }
             return;
         }
 
@@ -6658,7 +6682,7 @@ nw.Window.get().zoomLevel = -0.6;
                 // Assigning Scarletite right now, so it won't be filtered out by priority checks below, as we want to have scarletite + some other with remaining crafters
                 if (job === jobs.Scarletite) {
                     let maxScar = buildings.RuinsHellForge.stateOnCount;
-                    if (afforableAmount < maxScar) {
+                    if (afforableAmount < maxScar || (settings.prestigeType === "ascension" && isPillarFinished())) {
                         jobAdjustments[jobList.indexOf(job)] = 0 - job.count;
                     } else {
                         jobAdjustments[jobList.indexOf(job)] = maxScar - job.count;
