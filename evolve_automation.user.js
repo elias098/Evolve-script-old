@@ -41,18 +41,17 @@
 //   Autoclicker can trivialize many aspects of the game, and ruin experience. Spoil your game at your own risk!
 
 
-fs = require('fs');
 
-// Add jquery ui for nwjs and zoom out
-if (!jQuery.ui) {
-  let el = document.createElement("script");
-  el.src = "https://code.jquery.com/ui/1.12.1/jquery-ui.min.js";
-  document.body.appendChild( el );
-}
 
+
+
+
+// Zoom out with nwjs
 let win = nw.Window.get();
 win.zoomLevel = -0.6;
 
+// Write save and script settings to file on close
+fs = require('fs');
 win.on('close', function() {
     try {
         let ts = Date.now();
@@ -72,6 +71,10 @@ win.on('close', function() {
     }
     win.close(true);
 });
+
+
+
+
 
 (function($) {
     'use strict';
