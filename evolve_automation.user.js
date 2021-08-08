@@ -6460,9 +6460,9 @@ win.on('close', function() {
         if (settings.disableHell || (settings.prestigeType === "ascension" && settings.maxSoulGems && resources.Soul_Gem.currentQuantity >= settings.maxSoulGems)) {
             m.hellAttractorMax = 0;
             if (m.hellSoldiers > 0) {
-                m.removeHellPatrolSize(25000);
-                m.removeHellPatrol(25000);
-                m.removeHellGarrison(25000);
+                m.removeHellPatrolSize(m.hellPatrolSize);
+                m.removeHellPatrol(m.hellPatrols);
+                m.removeHellGarrison(m.hellSoldiers);
             }
             return;
         }
