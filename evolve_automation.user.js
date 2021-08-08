@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve test
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.75
+// @version      3.3.1.77
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/elias098/cc891c9c4bdc6276a8dfa4d346d92c30/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -25,7 +25,7 @@
 //     Resources with 0 priority won't be crafted during normal workflow, unless prioritized(which increases priority).
 //     Resources with 0 weighting won't ever be crafted, regardless of configured priority or prioritization.
 //     autoMarket and autoFactory also have separate global checkboxes per resources, when they disabled(both buying and selling in case of autoMarket) - script won't touch them, leaving with whatever was manually set.
-//   Added numbers in Mech Labs represents: design efficiency, real mech power affected by mech size, and power per used space, respectively. For all three - bigger numbers are better. Collectors show their supply collect rate.
+//   Added numbers in Mech Labs represents: design efficiency, real mech damage affected by most factors, and damage per used space, respectively. For all three - bigger numbers are better. Collectors show their supply collect rate.
 //   Buildings\researches queue, triggers, and available researches prioritize missing resources, overiding other script settings. If you have issues with factories producing not what you want, market buying not what you want, and such - you can disable this feature under general settings.
 //     Alternatively you may try to tweak options of producing facilities: resources with 0 weighting won't ever be produced, even when script tries to prioritize it. And resources with priority -1 will always have highest available priority, even when facility prioritizing something else. But not all facilities can be configured in that way.
 //   Auto Storage assigns crates\containers to make enough storage to build all buildings with enabled Auto Build.
@@ -276,7 +276,7 @@ win.on('close', function() {
             this.autoSellEnabled = false;
             this.autoBuyRatio = 0;
             this.autoSellRatio = 1;
-            this.autoTradeBuyEnabled = false;
+            this.autoTradeBuyEnabled = true;
             this.autoTradeSellEnabled = true;
             this.autoTradeWeighting = 1;
             this.autoTradePriority = 1;
@@ -1619,6 +1619,7 @@ win.on('close', function() {
         [{id:"steelen", trait:"steelen"}],
         [{id:"decay", trait:"decay"}],
         [{id:"emfield", trait:"emfield"}],
+        [{id:"inflation", trait:"inflation"}],
         [{id:"junker", trait:"junker"}],
         [{id:"cataclysm", trait:"cataclysm"}],
         [{id:"banana", trait:"banana"}],
@@ -1666,6 +1667,7 @@ win.on('close', function() {
         // We need to keep them separated, as we *don't* want to click on queue targets. Game will handle that. We're just managing resources for them.
         queuedTargets: [],
         triggerTargets: [],
+        techTargets: [],
         otherTargets: [],
 
         maxSpaceMiners: 0,
@@ -2421,14 +2423,9 @@ win.on('close', function() {
           () => "Still have some unused ejectors",
           () => settings.buildingWeightingUnusedEjectors
       ],[
-          () => resources.Crates.maxQuantity > 0,
-          (building) => building === buildings.StorageYard,
-          () => "Still have some unused crates",
-          () => settings.buildingWeightingCrateUseless
-      ],[
-          () => resources.Containers.maxQuantity > 0,
-          (building) => building === buildings.Warehouse,
-          () => "Still have some unused containers",
+          () => resources.Crates.maxQuantity > 0 || resources.Containers.maxQuantity > 0,
+          (building) => building === buildings.StorageYard || building === buildings.Warehouse,
+          () => "Still have some unused storage",
           () => settings.buildingWeightingCrateUseless
       ],[
           () => resources.Oil.maxQuantity < resources.Oil.requestedQuantity && buildings.OilWell.count <= 0 && buildings.GasMoonOilExtractor.count <= 0,
@@ -2460,6 +2457,11 @@ win.on('close', function() {
           (building) => building === buildings.Shed || building === buildings.RedGarage || building === buildings.AlphaWarehouse || building === buildings.ProximaCargoYard,
           () => "Need more storage",
           () => settings.buildingWeightingNeedStorage
+      ],[
+          () => resources.Population.maxQuantity > 50 && resources.Population.storageRatio < 0.9,
+          (building) => building.is.housing,
+          () => "No more houses needed",
+          () => settings.buildingWeightingUselessHousing
     ]];
 
     // Singleton manager objects
@@ -3836,7 +3838,7 @@ win.on('close', function() {
 
         getPreferredSize() {
             let mechBay = game.global.portal.mechbay;
-            if (settings.mechFillBay && mechBay.bay % 2 !== mechBay.max % 2 && mechBay.max % 1 === 0) {
+            if (settings.mechFillBay && mechBay.max % 1 === 0 && (game.global.blood.prepared >= 2 ? mechBay.bay % 2 !== mechBay.max % 2 : mechBay.max - mechBay.bay === 1)) {
                 return 'collector'; // One collector to fill odd bay
             }
 
@@ -3852,7 +3854,7 @@ win.on('close', function() {
             }
 
             let floorSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
-            if (floorSize !== "auto") {
+            if (floorSize !== "auto" && (!settings.mechFillBay || poly.mechCost(floorSize).c <= resources.Supply.maxQuantity)) {
                 return floorSize; // This floor have configured size
             }
 
@@ -4860,6 +4862,7 @@ win.on('close', function() {
         settings.buildingWeightingZenUseless = 0.01;
         settings.buildingWeightingGateTurret = 0.01;
         settings.buildingWeightingNeedStorage = 1;
+        settings.buildingWeightingUselessHousing = 1;
     }
 
     function resetBuildingSettings() {
@@ -5639,6 +5642,7 @@ win.on('close', function() {
         addSetting("buildingWeightingZenUseless", 0.01);
         addSetting("buildingWeightingGateTurret", 0.01);
         addSetting("buildingWeightingNeedStorage", 1);
+        addSetting("buildingWeightingUselessHousing", 1);
 
         addSetting("buildingEnabledAll", true);
         addSetting("buildingStateAll", true);
@@ -5687,6 +5691,9 @@ win.on('close', function() {
             settings.productionFoundryWeighting = settings.productionPrioritizeDemanded ? "demanded" : "none";
         }
         settings.challenge_plasmid = settings.challenge_mastery || settings.challenge_plasmid; // Merge challenge settings
+        if (settings.hasOwnProperty("res_trade_buy_mtr_Food")) {
+            MarketManager.priorityList.forEach(res => res.autoTradeBuyEnabled = true);
+        }
         // Remove old settings
         ["buildingWeightingTriggerConflict", "researchAlienGift", "arpaBuildIfStorageFullCraftableMin", "arpaBuildIfStorageFullResourceMaxPercent", "arpaBuildIfStorageFull", "productionMoneyIfOnly", "autoAchievements", "autoChallenge", "autoMAD", "autoSpace", "autoSeeder", "foreignSpyManage", "foreignHireMercCostLowerThan", "userResearchUnification", "btl_Ambush", "btl_max_Ambush", "btl_Raid", "btl_max_Raid", "btl_Pillage", "btl_max_Pillage", "btl_Assault", "btl_max_Assault", "btl_Siege", "btl_max_Siege", "smelter_fuel_Oil", "smelter_fuel_Coal", "smelter_fuel_Lumber", "planetSettingsCollapser", "buildingManageSpire", "hellHandleAttractors", "researchFilter", "challenge_mastery", "hellCountGems", "productionPrioritizeDemanded", "fleetChthonianPower", "productionWaitMana"].forEach(id => delete settings[id]);
         ["foreignAttack", "foreignOccupy", "foreignSpy", "foreignSpyMax", "foreignSpyOp"].forEach(id => [0, 1, 2].forEach(index => delete settings[id + index]));
@@ -6575,9 +6582,9 @@ win.on('close', function() {
         } else {
             // Try to leave hell if any soldiers are still assigned so the game doesn't put miniscule amounts of soldiers back
             if (m.hellAssigned > 0) {
-                m.removeHellPatrolSize(25000);
-                m.removeHellPatrol(25000);
-                m.removeHellGarrison(25000);
+                m.removeHellPatrolSize(m.hellPatrolSize);
+                m.removeHellPatrol(m.hellPatrols);
+                m.removeHellGarrison(m.hellSoldiers);
                 return;
             }
         }
@@ -6783,6 +6790,14 @@ win.on('close', function() {
         }
 
         let minersDisabled = settings.jobDisableMiners && buildings.GatewayStarbase.count > 0;
+        let hoovedMiner = game.global.race.hooved && !isLumberRace() && !minersDisabled  && availableEmployees > 0 ? jobList.indexOf(jobs.Miner) : -1;
+
+        // Make sure our hooved have miner for horseshoes
+        if (hoovedMiner !== -1) {
+            requiredJobs[hoovedMiner] = 1;
+            jobAdjustments[hoovedMiner] = 1 - jobs.Miner.count;
+            availableEmployees--;
+        }
 
         // And deal with the rest now
         for (let i = 0; i < 3; i++) {
@@ -8179,10 +8194,8 @@ win.on('close', function() {
     }
 
     function autoResearch() {
-        let items = $('#tech .action:not(.cna)');
-
         // Check if we have something researchable
-        if (items.length === 0){
+        if (state.techTargets.length === 0){
             return;
         }
 
@@ -8196,9 +8209,9 @@ win.on('close', function() {
             }
         }
 
-        for (let i = 0; i < items.length; i++) {
-            let tech = techIds[items[i].id];
-            if (isTechAllowed(tech) && !getCostConflict(tech) && tech.click()) {
+        for (let i = 0; i < state.techTargets.length; i++) {
+            let tech = state.techTargets[i];
+            if (tech.isAffordable() && !getCostConflict(tech) && tech.click()) {
                 BuildingManager.updateBuildings(); // Cache cost if we just unlocked some building
                 ProjectManager.updateProjects();
                 return;
@@ -8317,15 +8330,15 @@ win.on('close', function() {
                 building.extraDescription = `Missing ${Math.ceil(building.powered - availablePower)} MW to power on<br>${building.extraDescription}`;
             }
 
+            // Spire managed separately
+            if (manageSpire && (building === buildings.SpirePort || building === buildings.SpireBaseCamp || building === buildings.SpireMechBay)) {
+                continue;
+            }
+            // Lake transport managed separately
+            if (manageTransport && (building === buildings.LakeTransport || building === buildings.LakeBireme)) {
+                continue;
+            }
             if (building.is.smart && building.autoStateSmart) {
-                // Spire managed separately
-                if (manageSpire && (building === buildings.SpirePort || building === buildings.SpireBaseCamp || building === buildings.SpireMechBay)) {
-                    continue;
-                }
-                // Lake transport managed separately
-                if (manageTransport && (building === buildings.LakeTransport || building === buildings.LakeBireme)) {
-                    continue;
-                }
                 if (resources.Power.currentQuantity <= resources.Power.maxQuantity) { // Saving power, unless we can afford everything
                     // Disable Belt Space Stations with no workers
                     if (building === buildings.BeltSpaceStation && game.breakdown.c.Elerium) {
@@ -8631,6 +8644,238 @@ win.on('close', function() {
         return [bestSupplies * 10000 + 100, bestPort, bestBaseCamp];
     }
 
+    function expandStorage(storageToBuild) {
+        let missingStorage = storageToBuild;
+        let numberOfCratesWeCanBuild = resources.Crates.maxQuantity - resources.Crates.currentQuantity;
+        let numberOfContainersWeCanBuild = resources.Containers.maxQuantity - resources.Containers.currentQuantity;
+
+        resources.Crates.resourceRequirements.forEach(requirement =>
+            numberOfCratesWeCanBuild = Math.min(numberOfCratesWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
+        );
+
+        resources.Containers.resourceRequirements.forEach(requirement =>
+            numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
+        );
+
+        if (settings.storageLimitPreMad && !game.global.race['cataclysm'] && !haveTech("mad")) {
+          // Only build pre-mad containers when steel storage is over 80%
+          if (resources.Steel.storageRatio < 0.8) {
+              numberOfContainersWeCanBuild = 0;
+          }
+          // Only build pre-mad crates when already have Plywood for next level of library
+          if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity) && (resources.Crates.maxQuantity !== buildings.StorageYard.count * 10)) {
+              numberOfCratesWeCanBuild = 0;
+          }
+        }
+
+        // Build crates
+        // This check needed for cases when there's still empty crates, but they can't be used die to limits.
+        if (resources.Crates.currentQuantity === 0) {
+            let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(missingStorage / poly.crateValue()));
+            StorageManager.constructCrate(cratesToBuild);
+
+            resources.Crates.currentQuantity += cratesToBuild;
+            resources.Crates.resourceRequirements.forEach(requirement =>
+                requirement.resource.currentQuantity -= requirement.quantity * cratesToBuild
+            );
+            missingStorage -= cratesToBuild * poly.crateValue();
+        }
+
+        // And containers, if still needed
+        if (missingStorage > 0) {
+            let containersToBuild = Math.min(Math.floor(numberOfContainersWeCanBuild), Math.ceil(missingStorage / poly.containerValue()));
+            StorageManager.constructContainer(containersToBuild);
+
+            resources.Containers.currentQuantity += containersToBuild;
+            resources.Containers.resourceRequirements.forEach(requirement =>
+                requirement.resource.currentQuantity -= requirement.quantity * containersToBuild
+            );
+            missingStorage -= containersToBuild * poly.containerValue();
+        }
+        return missingStorage < storageToBuild;
+    }
+
+    function autoStorageBuildings() {
+        if (haveTask("bal_storage") || !StorageManager.initStorage()) {
+            return;
+        }
+
+        let crateVolume = poly.crateValue();
+        let containerVolume = poly.containerValue();
+        if (crateVolume <= 0 || containerVolume <= 0) {
+            return;
+        }
+
+        let storageList = StorageManager.priorityList.filter(r => r.isUnlocked() && r.isManagedStorage());
+        if (storageList.length === 0) {
+            return;
+        }
+
+        let buildingsList = [];
+        const addList = list => {
+            let resGroups = Object.fromEntries(storageList.map((res) => [res.id, []]));
+            list.forEach(obj => storageList.find(res => resourceCost(obj, res) && resGroups[res.id].push(obj)));
+            Object.values(resGroups).forEach((list, res) => list.sort((a, b) => resourceCost(b, storageList[res]) - resourceCost(a, storageList[res])));
+            buildingsList.push(...Object.values(resGroups).flat());
+        }
+
+        addList(state.queuedTargets);
+        addList(state.triggerTargets);
+        addList(state.techTargets);
+        addList(ProjectManager.priorityList.filter(b => b.isUnlocked() && b.autoBuildEnabled));
+        addList(BuildingManager.priorityList.filter(p => p.isUnlocked() && p.autoBuildEnabled));
+
+        let totalCrates = resources.Crates.currentQuantity;
+        let totalContainers = resources.Containers.currentQuantity;
+        let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
+        let overMult = 1.02;
+        let storageAdjustments = {};
+        for (let i = 0; i < storageList.length; i++){
+            let resource = storageList[i];
+
+            // Overflow enables safe reassign for resource, otherwise all extra resources will be just dumped away
+            if (settings.storageSafeReassign || resource.storeOverflow) {
+                storageAdjustments[resource.id] = {crate: resource.currentCrates, container: resource.currentContainers, amount: resource.maxQuantity};
+                let freeStorage = resource.maxQuantity - resource.currentQuantity * (resource.storeOverflow ? overMult : bufferMult);
+                // Check for minimum containers here
+                if (resource.currentContainers > 0 && freeStorage > containerVolume){
+                    let extraContainers = Math.min(resource.currentContainers, Math.floor(freeStorage / containerVolume));
+
+                    storageAdjustments[resource.id].amount -= extraContainers * containerVolume;
+                    storageAdjustments[resource.id].container -= extraContainers;
+                    totalContainers += extraContainers;
+                    freeStorage -= extraContainers * containerVolume;
+                }
+                // Check for minimum crates here
+                if (resource.currentCrates > 0 && freeStorage > crateVolume){
+                    let extraCrates = Math.min(resource.currentCrates, Math.floor(freeStorage / crateVolume));
+
+                    storageAdjustments[resource.id].amount -= extraCrates * crateVolume;
+                    storageAdjustments[resource.id].crate -= extraCrates;
+                    totalCrates += extraCrates;
+                }
+            } else {
+                storageAdjustments[resource.id] = {crate: 0, container: 0, amount: resource.maxQuantity - (resource.currentCrates * crateVolume + resource.currentContainers * containerVolume)};
+                totalCrates += resource.currentCrates;
+                totalContainers += resource.currentContainers;
+            }
+        }
+
+        let storageToBuild = 0;
+
+        // Calculate required storages
+        nextBuilding:
+        for (let i = 0; i < buildingsList.length; i++) {
+            let building = buildingsList[i];
+
+            let currentAssign = {};
+            let remainingCrates = totalCrates;
+            let remainingContainers = totalContainers;
+
+            for (let j = 0; j < building.resourceRequirements.length; j++) {
+                let resource = building.resourceRequirements[j].resource;
+                let quantity = building.resourceRequirements[j].quantity;
+
+                if (!storageAdjustments[resource.id]) {
+                    if (resource.maxQuantity >= quantity) {
+                        // Non-expandable, storage met - we're good
+                        continue;
+                    } else {
+                        // Non-expandable, storage not met - ignore building
+                        continue nextBuilding;
+                    }
+                } else if (storageAdjustments[resource.id].amount >= quantity * bufferMult) {
+                    // Expandable, storage met - we're good
+                    continue;
+                }
+                // Expandable, storage not met - try to assign
+                let missingStorage = quantity * bufferMult - storageAdjustments[resource.id].amount;
+                currentAssign[resource.id] = {crate: 0, container: 0};
+                if (remainingCrates > 0) {
+                    let assignCrates = Math.min(Math.ceil(missingStorage / crateVolume), remainingCrates, resource.autoCratesMax);
+                    remainingCrates -= assignCrates;
+                    missingStorage -= assignCrates * crateVolume;
+                    currentAssign[resource.id].crate = assignCrates;
+                }
+                if (missingStorage > 0 && remainingContainers > 0) {
+                    let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), remainingContainers, resource.autoContainersMax);
+                    remainingContainers -= assignContainer;
+                    missingStorage -= assignContainer * containerVolume;
+                    currentAssign[resource.id].container = assignContainer;
+                }
+                if (missingStorage > 0) {
+                    // Not enough storage, skip building
+                    storageToBuild = Math.max(storageToBuild, missingStorage);
+                    continue nextBuilding;
+                }
+            }
+            // Building as affordable, record used storage
+            for (let id in currentAssign) {
+                storageAdjustments[id].crate += currentAssign[id].crate;
+                storageAdjustments[id].container += currentAssign[id].container;
+                storageAdjustments[id].amount += currentAssign[id].crate * crateVolume + currentAssign[id].container * containerVolume;
+            }
+            totalCrates = remainingCrates;
+            totalContainers = remainingContainers;
+        }
+
+        for (let id in storageAdjustments) {
+            let resource = resources[id];
+            if (resource.storeOverflow && resource.currentQuantity * overMult > storageAdjustments[id].amount) {
+                let missingStorage = resource.currentQuantity * overMult - storageAdjustments[id].amount;
+                if (totalCrates > 0) {
+                    let assignCrates = Math.min(Math.ceil(missingStorage / crateVolume), totalCrates, resource.autoCratesMax);
+                    totalCrates -= assignCrates;
+                    missingStorage -= assignCrates * crateVolume;
+                    storageAdjustments[resource.id].crate += assignCrates;
+                }
+                if (missingStorage > 0 && totalContainers > 0) {
+                    let assignContainer = Math.min(Math.ceil(missingStorage / containerVolume), totalContainers, resource.autoContainersMax);
+                    totalContainers -= assignContainer;
+                    storageAdjustments[resource.id].container += assignContainer;
+                }
+            }
+        }
+
+        // Missing storage, try to build more
+        if (storageToBuild > 0 && expandStorage(storageToBuild)) {
+            // Stop if we bought something, we'll continue in next tick, after re-calculation of required storage
+            return;
+        }
+
+        // Go to clicking, unassign first
+        for (let id in storageAdjustments) {
+            let resource = resources[id];
+            let crateDelta = storageAdjustments[id].crate - resource.currentCrates;
+            let containerDelta = storageAdjustments[id].container - resource.currentContainers;
+            if (crateDelta < 0) {
+                StorageManager.unassignCrate(resource, crateDelta * -1);
+                resource.maxQuantity += crateDelta * crateVolume;
+                resources.Crates.currentQuantity -= crateDelta;
+            }
+            if (containerDelta < 0) {
+                StorageManager.unassignContainer(resource, containerDelta * -1);
+                resource.maxQuantity += containerDelta * containerVolume;
+                resources.Containers.currentQuantity -= containerDelta;
+            }
+        }
+        for (let id in storageAdjustments) {
+            let resource = resources[id];
+            let crateDelta = storageAdjustments[id].crate - resource.currentCrates;
+            let containerDelta = storageAdjustments[id].container - resource.currentContainers;
+            if (crateDelta > 0) {
+                StorageManager.assignCrate(resource, crateDelta);
+                resource.maxQuantity += crateDelta * crateVolume;
+                resources.Crates.currentQuantity += crateDelta;
+            }
+            if (containerDelta > 0) {
+                StorageManager.assignContainer(resource, containerDelta);
+                resource.maxQuantity += containerDelta * containerVolume;
+                resources.Containers.currentQuantity += containerDelta;
+            }
+        }
+    }
+
     function autoStorage() {
         if (haveTask("bal_storage") || !StorageManager.initStorage()) {
             return;
@@ -8686,10 +8931,7 @@ win.on('close', function() {
 
             // Check if have extra containers here
             if (containersStorage > 0 && ((extraStorage - containerVolume) > extraStorageRequired || calculatedContainers > resource.autoContainersMax)){
-                let uselessContainers = Math.floor((extraStorage - extraStorageRequired) / containerVolume);
-                let extraContainers = Math.min(calculatedContainers, uselessContainers);
-                let overcapContainers = calculatedContainers - resource.autoContainersMax;
-                let removedContainers = Math.max(overcapContainers, extraContainers);
+                let removedContainers = Math.max(calculatedContainers - resource.autoContainersMax, Math.min(calculatedContainers, Math.floor((extraStorage - extraStorageRequired) / containerVolume)));
 
                 if (settings.storageSafeReassign || resource.storeOverflow) {
                     let emptyContainers = Math.floor(freeStorage / containerVolume);
@@ -8705,10 +8947,7 @@ win.on('close', function() {
 
             // Check if have extra crates here
             if (cratesStorage > 0 && ((extraStorage - crateVolume) > extraStorageRequired || calculatedCrates > resource.autoCratesMax)){
-                let uselessCrates = Math.floor((extraStorage - extraStorageRequired) / crateVolume);
-                let extraCrates = Math.min(calculatedCrates, uselessCrates);
-                let overcapCrates = calculatedCrates - resource.autoCratesMax;
-                let removedCrates = Math.max(overcapCrates, extraCrates);
+                let removedCrates = Math.max(calculatedCrates - resource.autoCratesMax, Math.min(calculatedCrates, Math.floor((extraStorage - extraStorageRequired) / crateVolume)));
 
                 if (settings.storageSafeReassign || resource.storeOverflow) {
                     let emptyCrates = Math.floor(freeStorage / crateVolume);
@@ -8807,50 +9046,7 @@ win.on('close', function() {
 
         // Build more storage if we didn't had enough
         if (totalStorageMissing > 0){
-            let numberOfCratesWeCanBuild = resources.Crates.maxQuantity - resources.Crates.currentQuantity;
-            let numberOfContainersWeCanBuild = resources.Containers.maxQuantity - resources.Containers.currentQuantity;
-
-            resources.Crates.resourceRequirements.forEach(requirement =>
-                numberOfCratesWeCanBuild = Math.min(numberOfCratesWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
-            );
-
-            resources.Containers.resourceRequirements.forEach(requirement =>
-                numberOfContainersWeCanBuild = Math.min(numberOfContainersWeCanBuild, requirement.resource.currentQuantity / requirement.quantity)
-            );
-
-            if (settings.storageLimitPreMad && !game.global.race['cataclysm'] && !haveTech("mad")) {
-              // Only build pre-mad containers when steel storage is over 80%
-              if (resources.Steel.storageRatio < 0.8) {
-                  numberOfContainersWeCanBuild = 0;
-              }
-              // Only build pre-mad crates when already have Plywood for next level of library
-              if (isLumberRace() && buildings.Library.count < 20 && buildings.Library.resourceRequirements.some(requirement => requirement.resource === resources.Plywood && requirement.quantity > resources.Plywood.currentQuantity) && (resources.Crates.maxQuantity !== buildings.StorageYard.count * 10)) {
-                  numberOfCratesWeCanBuild = 0;
-              }
-            }
-
-            // Build crates
-            if (resources.Crates.currentQuantity === 0) {
-                let cratesToBuild = Math.min(Math.floor(numberOfCratesWeCanBuild), Math.ceil(totalStorageMissing / crateVolume));
-                StorageManager.constructCrate(cratesToBuild);
-
-                resources.Crates.currentQuantity += cratesToBuild;
-                resources.Crates.resourceRequirements.forEach(requirement =>
-                    requirement.resource.currentQuantity -= requirement.quantity * cratesToBuild
-                );
-                totalStorageMissing -= cratesToBuild * crateVolume;
-            }
-
-            // And containers, if still needed
-            if (totalStorageMissing > 0) {
-                let containersToBuild = Math.min(Math.floor(numberOfContainersWeCanBuild), Math.ceil(totalStorageMissing / crateVolume));
-                StorageManager.constructContainer(containersToBuild);
-
-                resources.Containers.currentQuantity += containersToBuild;
-                resources.Containers.resourceRequirements.forEach(requirement =>
-                    requirement.resource.currentQuantity -= requirement.quantity * containersToBuild
-                );
-            }
+            expandStorage(totalStorageMissing);
         }
 
         // Go to clicking, unassign first
@@ -9118,6 +9314,7 @@ win.on('close', function() {
         }
     }
 
+    // TODO: Quick options in Andromeda tab
     function autoFleet() {
         if (!FleetManager.initFleet()) {
             return;
@@ -9376,8 +9573,9 @@ win.on('close', function() {
 
         let canExpandBay = settings.mechBaysFirst && buildings.SpireMechBay.isAutoBuildable() && (buildings.SpireMechBay.isAffordable(true) || (buildings.SpirePurifier.isAutoBuildable() && buildings.SpirePurifier.isAffordable(true) && buildings.SpirePurifier.stateOffCount === 0));
         let mechScrap = settings.mechScrap;
-        if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity && !m.isActive) {
+        if (canExpandBay && resources.Supply.currentQuantity < resources.Supply.maxQuantity && (!prolongActive || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
             // We can build purifier or bay once we'll have enough resources, do not rebuild old mechs
+            // Unless floor just changed, and scrap income fall to low, so we need to rebuild them to fix it
             mechScrap = "none";
         } else if (settings.mechScrap === "mixed") {
             if (buildings.SpireWaygate.stateOnCount === 1) {
@@ -9529,23 +9727,16 @@ win.on('close', function() {
     }
 
     function calculateRequiredStorages() {
-        if (settings.storagePrioritizedOnly) {
-            return;
-        }
         let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
 
         // Get list of all unlocked techs, and find biggest numbers for each resource
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
-        $("#tech .action").each(function() {
-            let tech = techIds[this.id];
-            tech.updateResourceRequirements();
-            if (!isTechAllowed(tech) && !state.triggerTargets.includes(tech)) {
-                return;
-            }
+        for (let i = 0; i < state.techTargets.length; i++) {
+            let tech = state.techTargets[i];
             tech.resourceRequirements.forEach(requirement => {
                 requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
             });
-        });
+        }
 
         // We need to preserve amount of knowledge required by techs only, while amount still not polluted
         // by buildings - wardenclyffe, labs, etc. This way we can determine what's our real demand is.
@@ -9608,12 +9799,7 @@ win.on('close', function() {
 
         // Unlocked and affordable techs, and but only if we don't have anything more important
         if (prioritizedTasks.length === 0 && (haveTech("mad") ? settings.researchRequestSpace : settings.researchRequest)) {
-            $("#tech .action:not(.cnam)").each(function() {
-                let tech = techIds[this.id];
-                if (isTechAllowed(tech)) {
-                    prioritizedTasks.push(tech);
-                }
-            });
+            prioritizedTasks = state.techTargets.filter(t => t.isAffordable());
         }
 
         if (prioritizedTasks.length > 0) {
@@ -9663,8 +9849,11 @@ win.on('close', function() {
     }
 
     function updatePriorityTargets() {
-        state.otherTargets = [];
         state.queuedTargets = [];
+        state.triggerTargets = [];
+        state.techTargets = [];
+        state.otherTargets = [];
+
         // Buildings queue
         let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
         if (game.global.queue.display) {
@@ -9705,7 +9894,6 @@ win.on('close', function() {
 
         TriggerManager.resetTargetTriggers();
 
-        state.triggerTargets = [];
         // Active triggers
         for (let i = 0; i < TriggerManager.targetTriggers.length; i++) {
             let trigger = TriggerManager.targetTriggers[i];
@@ -9719,6 +9907,14 @@ win.on('close', function() {
                 state.triggerTargets.push(arpaIds[trigger.actionId]);
             }
         }
+
+        $("#tech .action").each(function() {
+            let tech = techIds[this.id];
+            if (isTechAllowed(tech) || state.triggerTargets.includes(tech)) {
+                tech.updateResourceRequirements();
+                state.techTargets.push(tech);
+            }
+        });
     }
 
     function checkEvolutionResult() {
@@ -10061,6 +10257,13 @@ win.on('close', function() {
         }
         if (obj === buildings.SpireMechBay && MechManager.initLab()) {
             notes.push(`Currrent team potential: ${getNiceNumber(MechManager.mechsPotential)}`);
+            let supplyCollected = MechManager.activeMechs
+              .filter(mech => mech.size === 'collector')
+              .reduce((sum, mech) => sum + (mech.power * MechManager.collectorValue), 0);
+            if (supplyCollected > 0) {
+                notes.push(`Supplies collected: ${getNiceNumber(supplyCollected)} /s`);
+            }
+
         }
 
 
@@ -10406,7 +10609,12 @@ win.on('close', function() {
             autoSmelter();
         }
         if (settings.autoStorage) {
-            autoStorage(); // Called before autoJobs, autoFleet and autoPower - so they wont mess with quantum
+            // Called before autoJobs, autoFleet and autoPower - so they wont mess with quantum
+            if (settings.storagePrioritizedOnly) {
+                autoStorageBuildings();
+            } else {
+                autoStorage();
+            }
         }
         if (settings.autoBuild || settings.autoARPA) {
             autoBuild(); // Called after autoStorage to compensate fluctuations of quantum(caused by previous tick's adjustments) levels before weightings
@@ -12098,16 +12306,16 @@ win.on('close', function() {
         let scrapOptions = [{val: "none", label: "None", hint: "Nothing will be scrapped automatically"},
                             {val: "single", label: "Full bay", hint: "Scrap mechs only when mech bay is full, and script need more room to build mechs"},
                             {val: "all", label: "All inefficient", hint: "Scrap all inefficient mechs immediately, using refounded resources to build better ones"},
-                            {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just  enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
+                            {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
         addSettingsSelect(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped. Infernal mechs won't ever be scrapped.", scrapOptions);
-        addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechPower / NewMechPower))' more than given number.&#xA;For the cases when exchanged mechs have same size(1/3 refund) it means that with 1 eff. script allowed to scrap mechs under 33.3%. 1.5 eff. - under 22.2%, 2 eff. - under 16.6%, 0.5 eff. - under 66.6%, 0 eff. - under 100%, etc.&#xA;Efficiency below '1' is not recommended, unless scrap set to 'Full bay', as it's a breakpoint when refunded resources can immidiately compensate lost power, resulting with best power growth rate.&#xA;Efficiency above '1' is useful to save resources for more desperate times, or to compensate low soul gems income.");
+        addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechDamage / NewMechDamage))' more than given number.&#xA;For the cases when exchanged mechs have same size(1/3 refund) it means that with 1 eff. script allowed to scrap mechs under 33.3%. 1.5 eff. - under 22.2%, 2 eff. - under 16.6%, 0.5 eff. - under 66.6%, 0 eff. - under 100%, etc.&#xA;Efficiency below '1' is not recommended, unless scrap set to 'Full bay', as it's a breakpoint when refunded resources can immidiately compensate lost damage, resulting with best damage growth rate.&#xA;Efficiency above '1' is useful to save resources for more desperate times, or to compensate low soul gems income.");
 
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
                             {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
         addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be build. Infernal mechs won't ever be build.", buildOptions);
 
-        let sizeOptions = [{val: "auto", label: "Most efficient", hint: "Select mech with best power per size for current floor, based on current amount of Soul Gems, and Supplies storage cap"}, ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
+        let sizeOptions = [{val: "auto", label: "Most efficient", hint: "Select mech with best damage per size for current floor, based on current amount of Soul Gems, and Supplies storage cap"}, ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
         addSettingsSelect(currentNode, "mechSize", "Preferred mech size", "Size of random mechs", sizeOptions);
         addSettingsSelect(currentNode, "mechSizeGravity", "Gravity mech size", "Override preferred size with this on floors with high gravity", sizeOptions);
 
@@ -12117,7 +12325,7 @@ win.on('close', function() {
                               {val: "never", label: "Never", hint: "Never add special equipment"}];
         addSettingsSelect(currentNode, "mechSpecial", "Special mechs", "Configures special equip", specialOptions);
         addSettingsNumber(currentNode, "mechScouts", "Minimum scouts ratio", "Scouts compensate terrain penalty of suboptimal mechs. Build them up to this ratio.");
-        addSettingsNumber(currentNode, "mechMinSupply", "Minimum supply income", "Build collectors if current supply income above given number");
+        addSettingsNumber(currentNode, "mechMinSupply", "Minimum supply income", "Build collectors if current supply income below given number");
         addSettingsNumber(currentNode, "mechMaxCollectors", "Maximum collectors ratio", "Limiter for above option, maximum space used by collectors");
         addSettingsNumber(currentNode, "mechWaygatePotential", "Maximum mech potential for Waygate", "Fight Demon Lord only when current mech team potential below given amount. Full bay of best mechs will have `1` potential. Damage against Demon Lord does not affected by floor modifiers, all mechs always does 100% damage to him. Thus it's most time-efficient to fight him at times when mechs can't make good progress against regular monsters, and waiting for rebuilding. Auto Power needs to be on for this to work.");
         addSettingsToggle(currentNode, "mechSaveSupply", "Save up full supplies for next floor", "Stop building new mechs close to next floor, preparing to build bunch of new mechs suited for next enemy");
@@ -12169,7 +12377,7 @@ win.on('close', function() {
         let largeFactor = efficient ? 1 : average(Object.values(MechManager.LargeChassisMod).reduce((list, mod) => list.concat(Object.values(mod)), []));
         let weaponFactor = efficient ? 1 : average(Object.values(poly.monsters).reduce((list, mod) => list.concat(Object.values(mod.weapon)), []));
 
-        let rows = [[""], ["Power Per Size"], ["Power Per Supply"], ["Power Per Gems"]];
+        let rows = [[""], ["Damage Per Size"], ["Damage Per Supply"], ["Damage Per Gems"]];
         for (let i = 0; i < MechManager.Size.length - 1; i++) { // Exclude collectors
             let mech = {size: MechManager.Size[i], equip: special ? ['special'] : []};
 
@@ -12505,7 +12713,7 @@ win.on('close', function() {
         addSettingsToggle(currentNode, "storageLimitPreMad", "Limit Pre-MAD Storage", "Saves resources and shortens run time by limiting storage pre-MAD");
         addSettingsToggle(currentNode, "storageSafeReassign", "Reassign only empty storages", "Wait until storage is empty before reassigning containers to another resource, to prevent overflowing and wasting resources");
         addSettingsToggle(currentNode, "storageAssignExtra", "Assign buffer storage", "Assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\\eject\\switch production, etc.");
-        addSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign only for prioritized resources", "Assign storages only for prioritized resources, up to amount required by whatever demanded it. Such as queue or trigger costs. You don't normally need it, this can be useful when you need all your storage space to afford single building, and want to fully focus on it. Warning! Enabling this option without `Reassign only empty storages` will instantly unassign all your crates and containers, and may lead to loss of resources.");
+        addSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign per buildings", "Assign storage based of individual costs of each enabled buildings, instead of going for maximums. Allows to prioritize storages for queue and trigger, and skip assigning for unaffrdable expensive buildings. Experimental feature.");
 
         currentNode.append(`
           <table style="width:100%">
@@ -13091,6 +13299,7 @@ win.on('close', function() {
         addWeightingRule(tableBodyNode, "Meditation Chamber", "No more Meditation Space needed", "buildingWeightingZenUseless");
         addWeightingRule(tableBodyNode, "Gate Turret", "Gate demons fully supressed", "buildingWeightingGateTurret");
         addWeightingRule(tableBodyNode, "Warehouses, Garage, Cargo Yard", "Need more storage", "buildingWeightingNeedStorage");
+        addWeightingRule(tableBodyNode, "Housing", "Less than 90% of houses are used", "buildingWeightingUselessHousing");
 
         document.documentElement.scrollTop = document.body.scrollTop = currentScrollPosition;
     }
