@@ -65,7 +65,7 @@ win.on('close', function() {
         let second = date_ob.getSeconds();
 
         let data = `${hour}:${minute}:${second}\n\nsave:\n${win.window.exportGame()}\n\nscript settings:\n${win.window.localStorage.getItem('settings') ?? ""}\n\n\n\n\n`
-        fs.appendFileSync(`./save/save${date}-${month}-${year}.txt`, data);
+        fs.appendFileSync(`./save/save_${date}-${month}-${year}.txt`, data);
     } catch (err) {
         alert(err)
     }
