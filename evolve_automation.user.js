@@ -2170,7 +2170,7 @@ win.on('close', function() {
           (building) => {
               if (resourceCost(building, resources.Supply) > 0) {
                   let mechBay = game.global.portal.mechbay;
-                  let newSize = !haveTask("mech") ? settings.mechBuild === "random" ? MechManager.getPreferredSize() : mechBay.blueprint.size : "titan";
+                  let newSize = !haveTask("mech") ? settings.mechBuild === "random" ? MechManager.getPreferredSize()[0] : mechBay.blueprint.size : "titan";
                   let [newGems, newSupply, newSpace] = MechManager.getMechCost({size: newSize});
                   if (newSpace <= mechBay.max - mechBay.bay && newSupply <= resources.Supply.maxQuantity && newGems <= resources.Soul_Gem.currentQuantity) {
                       return true;
@@ -3654,8 +3654,6 @@ win.on('close', function() {
         _listVueBinding: "mechList",
         _listVue: undefined,
 
-        collectorValue: 20000, // Collectors power mod. Higher number - more often they'll be scrapped. Current value derieved from scout: collectorValue = collectorPower / (scoutPower / scoutSize), to equalize relative values of collectors and combat mechs with same efficiency.
-
         activeMechs: [],
         inactiveMechs: [],
         mechsPower: 0,
@@ -3668,6 +3666,8 @@ win.on('close', function() {
         lastScouts: -1,
         lastSpecial: "",
         bestSize: [],
+        bestGems: [],
+        bestSupply: [],
         bestMech: {},
         bestBody: {},
         bestWeapon: [],
@@ -3716,6 +3716,11 @@ win.on('close', function() {
             chasm: (mech) => !mech.equip.includes('grapple') ? 0.1 : 1,
             dark: (mech) => !mech.equip.includes('infrared') ? mech.equip.includes('flare') ? 0.25 : 0.1 : 1,
             gravity: (mech) => mech.size === 'titan' ? 0.25 : mech.size === 'large' ? 0.45 : mech.size === 'medium' ? 0.8 : 1,
+        },
+
+        get collectorValue() {
+            // Collectors power mod. Higher number - more often they'll be scrapped. Default value derieved from scout: 20000 = collectorBaseIncome / (scoutPower / scoutSize), to equalize relative values of collectors and combat mechs with same efficiency.
+            return 20000 / settings.mechCollectorValue;
         },
 
         mechObserver: new MutationObserver(() => {
@@ -3772,7 +3777,14 @@ win.on('close', function() {
                     this.updateBestBody(size);
                     this.bestMech[size] = this.getRandomMech(size);
                 });
-                this.bestSize = Object.values(this.bestMech).filter(m => m.size !== 'collector').sort((a, b) => b.efficiency - a.efficiency).map(m => m.size);
+                let sortBy = (prop) => Object.values(this.bestMech)
+                  .filter(m => m.size !== 'collector')
+                  .sort((a, b) => b[prop] - a[prop])
+                  .map(m => m.size);
+
+                this.bestSize = sortBy('efficiency');
+                this.bestGems = sortBy('gems_eff');
+                this.bestSupply = sortBy('supply_eff');
 
                 // Redraw added label of Mech Lab after change of floor
                 createMechInfo();
@@ -3839,34 +3851,37 @@ win.on('close', function() {
         getPreferredSize() {
             let mechBay = game.global.portal.mechbay;
             if (settings.mechFillBay && mechBay.max % 1 === 0 && (game.global.blood.prepared >= 2 ? mechBay.bay % 2 !== mechBay.max % 2 : mechBay.max - mechBay.bay === 1)) {
-                return 'collector'; // One collector to fill odd bay
+                return ['collector', false]; // One collector to fill odd bay
             }
 
             if (resources.Supply.storageRatio < 0.9 && resources.Supply.rateOfChange < settings.mechMinSupply) {
                 let collectorsCount = this.activeMechs.filter(mech => mech.size === 'collector').length;
                 if (collectorsCount / mechBay.max < settings.mechMaxCollectors) {
-                    return 'collector'; // Bootstrap income
+                    return ['collector', true]; // Bootstrap income
                 }
             }
 
             if ((this.lastScouts * 2) / mechBay.max < settings.mechScouts) {
-                return 'small'; // Build scouts up to configured ratio
+                return ['small', true]; // Build scouts up to configured ratio
             }
 
             let floorSize = game.global.portal.spire.status.gravity ? settings.mechSizeGravity : settings.mechSize;
-            if (floorSize !== "auto" && (!settings.mechFillBay || poly.mechCost(floorSize).c <= resources.Supply.maxQuantity)) {
-                return floorSize; // This floor have configured size
+            if (this.Size.includes(floorSize) && (!settings.mechFillBay || poly.mechCost(floorSize).c <= resources.Supply.maxQuantity)) {
+                return [floorSize, false]; // This floor have configured size
             }
+            let mechPriority = floorSize === "gems" ? this.bestGems :
+                               floorSize === "supply" ? this.bestSupply :
+                               this.bestSize;
 
-            for (let i = 0; i < this.bestSize.length; i++) {
-                let mechSize = this.bestSize[i];
+            for (let i = 0; i < mechPriority.length; i++) {
+                let mechSize = mechPriority[i];
                 let {s, c} = poly.mechCost(mechSize);
                 if (resources.Soul_Gem.spareQuantity >= s && resources.Supply.maxQuantity >= c) {
-                    return mechSize; // Affordable mech for auto size
+                    return [mechSize, false]; // Affordable mech for auto size
                 }
             }
 
-            return 'titan'; // Just a stub, if auto size couldn't pick anything
+            return ['titan', false]; // Just a stub, if auto size couldn't pick anything
         },
 
         getMechStats(mech) {
@@ -3875,8 +3890,9 @@ win.on('close', function() {
                 rating *= this.getWeaponMod(mech);
             }
             let power = rating * this.getSizeMod(mech) * (mech.infernal ? 1.25 : 1);
-            let efficiency = power / this.getMechSpace(mech);
-            return {power: power, efficiency: efficiency};
+            let [gem, supply, space] = this.getMechCost(mech);
+            let [gemRef, supplyRef] = this.getMechRefund(mech);
+            return {power: power, efficiency: power / space, gems_eff: power / (gem - gemRef), supply_eff: power / (supply - supplyRef)};
         },
 
         getTimeToClear() {
@@ -5664,6 +5680,7 @@ win.on('close', function() {
 
         addSetting("mechScrap", "mixed");
         addSetting("mechScrapEfficiency", 2);
+        addSetting("mechCollectorValue", 1);
         addSetting("mechBuild", "random");
         addSetting("mechSize", "titan");
         addSetting("mechSizeGravity", "auto");
@@ -9543,8 +9560,10 @@ win.on('close', function() {
         }
 
         let newMech = {};
+        let newSize, forceBuild;
         if (settings.mechBuild === "random") {
-            newMech = m.getRandomMech(m.getPreferredSize());
+            [newSize, forceBuild] = m.getPreferredSize();
+            newMech = m.getRandomMech(newSize);
         } else if (settings.mechBuild === "user") {
             newMech = {...mechBay.blueprint, ...m.getMechStats(mechBay.blueprint)};
         } else { // mechBuild === "none"
@@ -9560,7 +9579,7 @@ win.on('close', function() {
         let lastFloor = settings.prestigeType === "demonic" && buildings.SpireTower.count >= settings.prestigeDemonicFloor && haveTech("waygate", 3);
 
         // Save up supply for next floor when, unless our supply income only from collectors, thet aren't built yet
-        if (settings.mechSaveSupply && !lastFloor && !m.isActive && ((game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
+        if (settings.mechSaveSupply && !lastFloor && !prolongActive && ((game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
             let missingSupplies = resources.Supply.maxQuantity - resources.Supply.currentQuantity;
             if (baySpace < newSpace) {
                 missingSupplies -= m.getMechRefund({size: "titan"})[1];
@@ -9632,7 +9651,7 @@ win.on('close', function() {
             }
 
             // Now go scrapping, if possible and benefical
-            if (trashMechs.length > 0 && powerLost / spaceGained < newMech.efficiency && baySpace + spaceGained >= newSpace && resources.Supply.spareQuantity + supplyGained >= newSupply && resources.Soul_Gem.spareQuantity + gemsGained >= newGems) {
+            if (trashMechs.length > 0 && (forceBuild || powerLost / spaceGained < newMech.efficiency) && baySpace + spaceGained >= newSpace && resources.Supply.spareQuantity + supplyGained >= newSupply && resources.Soul_Gem.spareQuantity + gemsGained >= newGems) {
                 trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
                 if (trashMechs.length > 1) {
                     let rating = average(trashMechs.map(mech => mech.power / m.bestMech[mech.size].power));
@@ -12309,13 +12328,17 @@ win.on('close', function() {
                             {val: "mixed", label: "Excess inefficient", hint: "Scrap as much inefficient mechs as possible, trying to preserve just enough of old mechs to fill bay to max by the time when next floor will be reached, calculating threshold based on progress speed and resources incomes"}];
         addSettingsSelect(currentNode, "mechScrap", "Scrap mechs", "Configures what will be scrapped. Infernal mechs won't ever be scrapped.", scrapOptions);
         addSettingsNumber(currentNode, "mechScrapEfficiency", "Scrap efficiency", "Scrap mechs only when '((OldMechRefund / NewMechCost) / (OldMechDamage / NewMechDamage))' more than given number.&#xA;For the cases when exchanged mechs have same size(1/3 refund) it means that with 1 eff. script allowed to scrap mechs under 33.3%. 1.5 eff. - under 22.2%, 2 eff. - under 16.6%, 0.5 eff. - under 66.6%, 0 eff. - under 100%, etc.&#xA;Efficiency below '1' is not recommended, unless scrap set to 'Full bay', as it's a breakpoint when refunded resources can immidiately compensate lost damage, resulting with best damage growth rate.&#xA;Efficiency above '1' is useful to save resources for more desperate times, or to compensate low soul gems income.");
+        addSettingsNumber(currentNode, "mechCollectorValue", "Collector value", "Collectors can't be directly compared with combat mechs, having no firepower. Script will assume that one collector/size is equal to this amount of scout/size. If you feel that script is too reluctant to scrap old collectors - you can decrease this value. Or increase, to make them more persistant. 1 value - 50% collector equial to 50% scout, 0.5 value - 50% collector equial to 25% scout, 2 value - 50% collector equial to 100% scout, etc.");
 
         let buildOptions = [{val: "none", label: "None", hint: "Nothing will be build automatically"},
                             {val: "random", label: "Random good", hint: "Build random mech with size chosen below, and best possible efficiency"},
                             {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
         addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be build. Infernal mechs won't ever be build.", buildOptions);
 
-        let sizeOptions = [{val: "auto", label: "Most efficient", hint: "Select mech with best damage per size for current floor, based on current amount of Soul Gems, and Supplies storage cap"}, ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
+        let sizeOptions = [{val: "auto", label: "Damage Per Size", hint: "Select affordable mech with most damage per size on current floor"},
+                           {val: "gems", label: "Damage Per Gems", hint: "Select affordable mech with most damage per gems on current floor"},
+                           {val: "supply", label: "Damage Per Supply", hint: "Select affordable mech with most damage per supply on current floor"},
+                            ...MechManager.Size.map(id => ({val: id, label: game.loc(`portal_mech_size_${id}`), hint: game.loc(`portal_mech_size_${id}_desc`)}))];
         addSettingsSelect(currentNode, "mechSize", "Preferred mech size", "Size of random mechs", sizeOptions);
         addSettingsSelect(currentNode, "mechSizeGravity", "Gravity mech size", "Override preferred size with this on floors with high gravity", sizeOptions);
 
@@ -12377,7 +12400,7 @@ win.on('close', function() {
         let largeFactor = efficient ? 1 : average(Object.values(MechManager.LargeChassisMod).reduce((list, mod) => list.concat(Object.values(mod)), []));
         let weaponFactor = efficient ? 1 : average(Object.values(poly.monsters).reduce((list, mod) => list.concat(Object.values(mod.weapon)), []));
 
-        let rows = [[""], ["Damage Per Size"], ["Damage Per Supply"], ["Damage Per Gems"]];
+        let rows = [[""], ["Damage Per Size"], ["Damage Per Supply (New)"], ["Damage Per Gems (New)"], ["Damage Per Supply (Rebuild)"], ["Damage Per Gems (Rebuild)"]];
         for (let i = 0; i < MechManager.Size.length - 1; i++) { // Exclude collectors
             let mech = {size: MechManager.Size[i], equip: special ? ['special'] : []};
 
@@ -12388,10 +12411,14 @@ win.on('close', function() {
             let power = basePower * statusMod * terrainMod * weaponMod;
 
             let [gems, cost, space] = MechManager.getMechCost(mech);
+            let [gemsRef, costRef] = MechManager.getMechRefund(mech);
+
             rows[0].push(game.loc("portal_mech_size_" + mech.size));
             rows[1].push((power / space * 100).toFixed(4));
             rows[2].push((power / (cost / 100000) * 100).toFixed(4));
-            rows[3].push((power / gems  * 100).toFixed(4));
+            rows[3].push((power / gems * 100).toFixed(4));
+            rows[4].push((power / ((cost - costRef) / 100000) * 100).toFixed(4));
+            rows[5].push((power / (gems - gemsRef) * 100).toFixed(4));
         }
         rows.forEach((line, index, arr) => content += "<tr>" + (index === 0 ? cellWarn : cellAdv) + line.join("&nbsp;" + cellEnd + (index === 0 ? cellAdv : cellInfo)) + cellEnd + "</tr>");
         $("#script_mechStatsTable").html(content);
@@ -12403,6 +12430,7 @@ win.on('close', function() {
     function resetMechSettings() {
         settings.mechScrap = "mixed";
         settings.mechScrapEfficiency = 2;
+        settings.mechCollectorValue = 1;
         settings.mechBuild = "random";
         settings.mechSize = "titan";
         settings.mechSizeGravity = "auto";
@@ -12713,7 +12741,7 @@ win.on('close', function() {
         addSettingsToggle(currentNode, "storageLimitPreMad", "Limit Pre-MAD Storage", "Saves resources and shortens run time by limiting storage pre-MAD");
         addSettingsToggle(currentNode, "storageSafeReassign", "Reassign only empty storages", "Wait until storage is empty before reassigning containers to another resource, to prevent overflowing and wasting resources");
         addSettingsToggle(currentNode, "storageAssignExtra", "Assign buffer storage", "Assigns 3% more resources above required amounts, ensuring that required quantity will be actually reached, even if other part of script trying to sell\\eject\\switch production, etc.");
-        addSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign per buildings", "Assign storage based of individual costs of each enabled buildings, instead of going for maximums. Allows to prioritize storages for queue and trigger, and skip assigning for unaffrdable expensive buildings. Experimental feature.");
+        addSettingsToggle(currentNode, "storagePrioritizedOnly", "Assign per buildings", "Assign storage based on individual costs of each enabled buildings, instead of going for maximums. Allows to prioritize storages for queue and trigger, and skip assigning for unaffordable expensive buildings. Experimental feature.");
 
         currentNode.append(`
           <table style="width:100%">
