@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve test
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.77
+// @version      3.3.1.78
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/elias098/cc891c9c4bdc6276a8dfa4d346d92c30/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -899,9 +899,9 @@ win.on('close', function() {
             // Don't log evolution actions and gathering actions
             if (game.global.race.species !== "protoplasm" && !logIgnore.includes(this.id)) {
                 if (this.gameMax < Number.MAX_SAFE_INTEGER && this.count + 1 < this.gameMax) {
-                    GameLog.logSuccess(GameLog.Types.multi_construction, poly.loc('build_success', [`${this.title} (${this.count + 1})`]));
+                    GameLog.logSuccess(GameLog.Types.multi_construction, poly.loc('build_success', [`${this.title} (${this.count + 1})`]), ['queue', 'building_queue']);
                 } else {
-                    GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]));
+                    GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
                 }
             }
 
@@ -1201,9 +1201,9 @@ win.on('close', function() {
             );
 
             if (this.progress + this.currentStep < 100) {
-                GameLog.logSuccess(GameLog.Types.arpa, poly.loc('build_success', [`${this.title} (${this.progress + this.currentStep}%)`]));
+                GameLog.logSuccess(GameLog.Types.arpa, poly.loc('build_success', [`${this.title} (${this.progress + this.currentStep}%)`]), ['queue', 'building_queue']);
             } else {
-                GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]));
+                GameLog.logSuccess(GameLog.Types.construction, poly.loc('build_success', [this.title]), ['queue', 'building_queue']);
             }
 
             resetMultiplier();
@@ -1263,7 +1263,7 @@ win.on('close', function() {
             );
 
             getVueById(this._vueBinding).action();
-            GameLog.logSuccess(GameLog.Types.research, poly.loc('research_success', [techIds[this.definition.id].title]));
+            GameLog.logSuccess(GameLog.Types.research, poly.loc('research_success', [techIds[this.definition.id].title]), ['queue', 'research_queue']);
             return true;
         }
 
@@ -1666,6 +1666,7 @@ win.on('close', function() {
 
         // We need to keep them separated, as we *don't* want to click on queue targets. Game will handle that. We're just managing resources for them.
         queuedTargets: [],
+        queuedTargetsAll: [],
         triggerTargets: [],
         techTargets: [],
         otherTargets: [],
@@ -2072,7 +2073,7 @@ win.on('close', function() {
         LakeTransport: new Action("Lake Transport", "portal", "transport", "prtl_lake", {smart: true}),
 
         SpireMission: new Action("Spire Mission", "portal", "spire_mission", "prtl_spire"),
-        SpirePurifier: new Action("Spire Purifier", "portal", "purifier", "prtl_spire"),
+        SpirePurifier: new Action("Spire Purifier", "portal", "purifier", "prtl_spire", {smart: true}),
         SpirePort: new Action("Spire Port", "portal", "port", "prtl_spire", {smart: true}),
         SpireBaseCamp: new Action("Spire Base Camp", "portal", "base_camp", "prtl_spire", {smart: true}),
         SpireBridge: new Action("Spire Bridge", "portal", "bridge", "prtl_spire"),
@@ -2428,6 +2429,7 @@ win.on('close', function() {
           () => "Still have some unused storage",
           () => settings.buildingWeightingCrateUseless
       ],[
+      // TODO: Fuel rules probably broken, fix me
           () => resources.Oil.maxQuantity < resources.Oil.requestedQuantity && buildings.OilWell.count <= 0 && buildings.GasMoonOilExtractor.count <= 0,
           (building) => building === buildings.OilWell || building === buildings.GasMoonOilExtractor,
           () => "Need more fuel",
@@ -3027,7 +3029,7 @@ win.on('close', function() {
             let optionsNode = document.querySelector("#govType button");
             let title = game.loc('civics_government_type');
             WindowManager.openModalWindowWithCallback(optionsNode, title, () => {
-                GameLog.logSuccess(GameLog.Types.special, `Revolution! Government changed to ${game.loc("govern_" + government)}.`);
+                GameLog.logSuccess(GameLog.Types.special, `Revolution! Government changed to ${game.loc("govern_" + government)}.`, ['events', 'major_events']);
                 getVueById('govModal')?.setGov(government);
             });
         },
@@ -3310,7 +3312,7 @@ win.on('close', function() {
                 }
                 let title = game.loc('civics_espionage_actions');
                 WindowManager.openModalWindowWithCallback(optionsNode, title, () => {
-                    GameLog.logSuccess(GameLog.Types.spying, `Performing "${game.loc("civics_spy_" + espionageToPerform)}" covert operation against ${getGovName(govIndex)}.`);
+                    GameLog.logSuccess(GameLog.Types.spying, `Performing "${game.loc("civics_spy_" + espionageToPerform)}" covert operation against ${getGovName(govIndex)}.`, ['spy']);
                     getVueById('espModal')?.[espionageToPerform]?.(govIndex);
                 });
             }
@@ -3995,7 +3997,7 @@ win.on('close', function() {
                 this._assemblyVue.setEquip(mech.equip[i], i);
             }
             this._assemblyVue.build();
-            GameLog.logSuccess(GameLog.Types.mech_build, `${this.mechDesc(mech)} mech has been assembled.`);
+            GameLog.logSuccess(GameLog.Types.mech_build, `${this.mechDesc(mech)} mech has been assembled.`, ['hell']);
         },
 
         scrapMech(mech) {
@@ -4339,20 +4341,20 @@ win.on('close', function() {
             mech_scrap: {name: "Mech Scrap", settingKey: "log_mech_scrap"},
         },
 
-        logSuccess(loggingType, text) {
+        logSuccess(loggingType, text, tags) {
             if (!settings.logEnabled || !settings[loggingType.settingKey]) {
                 return;
             }
 
-            game.messageQueue(text, "success");
+            game.messageQueue(text, "success", false, tags);
         },
 
-        logWarning(loggingType, text) {
+        logWarning(loggingType, text, tags) {
             if (!settings.logEnabled || !settings[loggingType.settingKey]) {
                 return;
             }
 
-            game.messageQueue(text, "warning");
+            game.messageQueue(text, "warning", false, tags);
         },
     }
 
@@ -5877,7 +5879,7 @@ win.on('close', function() {
             if (state.evolutionTarget === null) {
                 state.evolutionTarget = races.antid;
             }
-            GameLog.logSuccess(GameLog.Types.special, `Attempting evolution of ${state.evolutionTarget.name}.`);
+            GameLog.logSuccess(GameLog.Types.special, `Attempting evolution of ${state.evolutionTarget.name}.`, ['progress']);
         }
 
         // Apply challenges
@@ -6289,9 +6291,9 @@ win.on('close', function() {
 
             // Log the interaction
             if (mercenariesHired === 1) {
-                GameLog.logSuccess(GameLog.Types.mercenary, `Hired a mercenary to join the garrison.`);
+                GameLog.logSuccess(GameLog.Types.mercenary, `Hired a mercenary to join the garrison.`, ['combat']);
             } else if (mercenariesHired > 1) {
-                GameLog.logSuccess(GameLog.Types.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`);
+                GameLog.logSuccess(GameLog.Types.mercenary, `Hired ${mercenariesHired} mercenaries to join the garrison.`, ['combat']);
             }
         }
     }
@@ -6327,7 +6329,7 @@ win.on('close', function() {
                     continue;
                 }
 
-                GameLog.logSuccess(GameLog.Types.spying, `Training a spy to send against ${getGovName(foreign.id)}.`);
+                GameLog.logSuccess(GameLog.Types.spying, `Training a spy to send against ${getGovName(foreign.id)}.`, ['spy']);
                 foreignVue.spy(foreign.id);
             }
         }
@@ -6461,7 +6463,7 @@ win.on('close', function() {
         let campaignTitle = m.getCampaignTitle(requiredTactic);
         let battalionRating = game.armyRating(m.raid, "army");
         let advantagePercent = m.getAdvantage(battalionRating, requiredTactic, currentTarget.id).toFixed(1);
-        GameLog.logSuccess(GameLog.Types.attack, `Launching ${campaignTitle} campaign against ${getGovName(currentTarget.id)} with ${currentTarget.gov.spy < 1 ? "~" : ""}${advantagePercent}% advantage.`);
+        GameLog.logSuccess(GameLog.Types.attack, `Launching ${campaignTitle} campaign against ${getGovName(currentTarget.id)} with ${currentTarget.gov.spy < 1 ? "~" : ""}${advantagePercent}% advantage.`, ['combat']);
 
         m.launchCampaign(currentTarget.id);
 
@@ -8095,7 +8097,7 @@ win.on('close', function() {
                         let resource = thisRequirement.resource;
 
                         // Ignore locked and capped resources
-                        if (!resource.isUnlocked() || resource.isCapped()){
+                        if (!resource.isUnlocked() || resource.storageRatio > 0.99){
                             continue;
                         }
 
@@ -8571,29 +8573,24 @@ win.on('close', function() {
             // Try to prevent building bays when they won't have enough time to work out used supplies. It assumes that time to build new bay ~= time to clear floor.
             // Make sure we have some transports, so we won't stuck with 0 supply income after disabling collectors, and also let mech manager finish rebuilding after switching floor
             // And also let autoMech do minimum preparation, so we won't stuck with near zero potential
-            let buildAllowed = buildings.SpireMechBay.isSmartManaged()
-              && (settings.prestigeType !== "demonic" || (settings.prestigeDemonicFloor - buildings.SpireTower.count) > buildings.SpireMechBay.count)
-              && (!settings.autoMech || !MechManager.isActive)
-              && game.global.portal.transport.cargo.used > 0
-              && game.global.portal.transport.cargo.max > 0;
+            let buildAllowed = (!settings.autoMech || !MechManager.isActive)
+              && (settings.prestigeType !== "demonic" || settings.prestigeDemonicFloor - buildings.SpireTower.count > buildings.SpireMechBay.count);
 
-            const spireBuildable = (building) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money);
-            let mechBuildable = spireBuildable(buildings.SpireMechBay);
-            let puriBuildable = spireBuildable(buildings.SpirePurifier) && buildings.SpirePurifier.stateOffCount === 0;
-            let portBuildable = spireBuildable(buildings.SpirePort);
-            let campBuildable = spireBuildable(buildings.SpireBaseCamp);
+            // Check is we allowed to build specific building, and have money for it
+            const canBuild = (building, checkSmart) => buildAllowed && building.isAutoBuildable() && resources.Money.maxQuantity >= resourceCost(building, resources.Money) && (!checkSmart || building.isSmartManaged());
 
-            let nextMechCost = mechBuildable ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let nextPuriCost = puriBuildable && mechBuildable && (portBuildable || campBuildable) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
             let spireSupport = Math.floor(resources.Spire_Support.rateOfChange);
             let maxBay = Math.min(buildings.SpireMechBay.count, spireSupport);
-            let maxPorts = portBuildable ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
-            let maxCamps = campBuildable ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
+            let maxPorts = canBuild(buildings.SpirePort) ? buildings.SpirePort.autoMax : buildings.SpirePort.count;
+            let maxCamps = canBuild(buildings.SpireBaseCamp) ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
+            let nextMechCost = canBuild(buildings.SpireMechBay, true) ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextPuriCost = canBuild(buildings.SpirePurifier, true) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
+            let nextCost = Math.min(nextMechCost, nextPuriCost);
 
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            let canBuild = bestSupplies >= nextPuriCost || bestSupplies >= nextMechCost;
+            let overCappedSupplies = false;
             for (let targetMech = maxBay; targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
 
@@ -8612,7 +8609,11 @@ win.on('close', function() {
                     }
                     break;
                 }
-                if (!canBuild || targetSupplies >= nextPuriCost || targetSupplies >= nextMechCost) {
+
+                if (targetMech === maxBay && resources.Supply.currentQuantity >= targetSupplies) {
+                    overCappedSupplies = true;
+                }
+                if (!overCappedSupplies || bestSupplies < nextCost || targetSupplies >= nextCost) {
                     adjustSpire(targetMech, targetPort, targetCamp);
                     break;
                 }
@@ -8658,7 +8659,7 @@ win.on('close', function() {
             bestPort = Math.min(support - i, maxPorts);
             bestBaseCamp = Math.min(i, maxCamps);
         }
-        return [bestSupplies * 10000 + 100, bestPort, bestBaseCamp];
+        return [Math.round(bestSupplies * 10000 + 100), bestPort, bestBaseCamp];
     }
 
     function expandStorage(storageToBuild) {
@@ -8736,7 +8737,7 @@ win.on('close', function() {
             buildingsList.push(...Object.values(resGroups).flat());
         }
 
-        addList(state.queuedTargets);
+        addList(state.queuedTargetsAll);
         addList(state.triggerTargets);
         addList(state.techTargets);
         addList(ProjectManager.priorityList.filter(b => b.isUnlocked() && b.autoBuildEnabled));
@@ -9579,7 +9580,7 @@ win.on('close', function() {
         let lastFloor = settings.prestigeType === "demonic" && buildings.SpireTower.count >= settings.prestigeDemonicFloor && haveTech("waygate", 3);
 
         // Save up supply for next floor when, unless our supply income only from collectors, thet aren't built yet
-        if (settings.mechSaveSupply && !lastFloor && !prolongActive && ((game.global.portal.transport.cargo.used > 0 && game.global.portal.transport.cargo.max > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
+        if (settings.mechSaveSupply && !lastFloor && !prolongActive && ((buildings.LakeBireme.stateOnCount > 0 && buildings.LakeTransport.stateOnCount > 0) || resources.Supply.rateOfChange >= settings.mechMinSupply)) {
             let missingSupplies = resources.Supply.maxQuantity - resources.Supply.currentQuantity;
             if (baySpace < newSpace) {
                 missingSupplies -= m.getMechRefund({size: "titan"})[1];
@@ -9655,9 +9656,9 @@ win.on('close', function() {
                 trashMechs.sort((a, b) => b.id - a.id); // Goes from bottom to top of the list, so it won't shift IDs
                 if (trashMechs.length > 1) {
                     let rating = average(trashMechs.map(mech => mech.power / m.bestMech[mech.size].power));
-                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${trashMechs.length} mechs (~${Math.round(rating * 100)}%) has been scrapped.`);
+                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${trashMechs.length} mechs (~${Math.round(rating * 100)}%) has been scrapped.`, ['hell']);
                 } else {
-                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${m.mechDesc(trashMechs[0])} mech has been scrapped.`);
+                    GameLog.logSuccess(GameLog.Types.mech_scrap, `${m.mechDesc(trashMechs[0])} mech has been scrapped.`, ['hell']);
                 }
                 trashMechs.forEach(mech => m.scrapMech(mech));
                 resources.Supply.currentQuantity = Math.min(resources.Supply.currentQuantity + supplyGained, resources.Supply.maxQuantity);
@@ -9745,17 +9746,23 @@ win.on('close', function() {
         MarketManager.updateData();
     }
 
-    function calculateRequiredStorages() {
+    function requiestStorageFor(list) {
         let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
+        for (let i = 0; i < list.length; i++) {
+            let obj = list[i];
+            let unaffordableReq = obj.resourceRequirements.find(req => req.resource.maxQuantity < req.quantity && !req.resource.hasStorage());
+            if (!unaffordableReq) {
+                obj.resourceRequirements.forEach(requirement => {
+                    requirement.resource.storageRequired = Math.max(requirement.quantity * bufferMult, requirement.resource.storageRequired);
+                });
+            }
+        }
+    }
 
+    function calculateRequiredStorages() {
         // Get list of all unlocked techs, and find biggest numbers for each resource
         // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
-        for (let i = 0; i < state.techTargets.length; i++) {
-            let tech = state.techTargets[i];
-            tech.resourceRequirements.forEach(requirement => {
-                requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-            });
-        }
+        requiestStorageFor(state.techTargets);
 
         // We need to preserve amount of knowledge required by techs only, while amount still not polluted
         // by buildings - wardenclyffe, labs, etc. This way we can determine what's our real demand is.
@@ -9763,26 +9770,10 @@ win.on('close', function() {
         // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
         state.knowledgeRequiredByTechs = resources.Knowledge.storageRequired;
 
-        // Now we're checking costs of buildings
-        BuildingManager.priorityList.forEach(building => {
-            if (building.isUnlocked() && building.autoBuildEnabled){
-                let unaffordableReq = building.resourceRequirements.find(req => req.resource.maxQuantity < req.quantity && !req.resource.hasStorage());
-                if (!unaffordableReq) {
-                    building.resourceRequirements.forEach(requirement => {
-                        requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-                    });
-                }
-            }
-        });
-
-        // Same for projects
-        ProjectManager.priorityList.forEach(project => {
-            if (project.isUnlocked() && project.autoBuildEnabled) {
-                project.resourceRequirements.forEach(requirement => {
-                    requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-                });
-            }
-        });
+        // Now we can do same for other things
+        requiestStorageFor(state.queuedTargetsAll);
+        requiestStorageFor(BuildingManager.priorityList.filter((b) => b.isUnlocked() && b.autoBuildEnabled));
+        requiestStorageFor(ProjectManager.priorityList.filter((p) => p.isUnlocked() && p.autoBuildEnabled));
 
         // Increase storage for sellable resources, to make sure we'll have required amount before they'll be sold
         if (!game.global.race['no_trade'] && settings.autoMarket) {
@@ -9869,23 +9860,18 @@ win.on('close', function() {
 
     function updatePriorityTargets() {
         state.queuedTargets = [];
+        state.queuedTargetsAll = [];
         state.triggerTargets = [];
         state.techTargets = [];
         state.otherTargets = [];
 
         // Buildings queue
-        let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
         if (game.global.queue.display) {
             for (let i = 0; i < game.global.queue.queue.length; i++) {
                 let id = game.global.queue.queue[i].id;
                 let obj = buildingIds[id] || arpaIds[id];
                 if (obj) {
-                    obj.resourceRequirements.forEach(requirement => {
-                        requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-                    });
-                    if (obj.isAffordable(true)) {
-                        state.queuedTargets.push(obj);
-                    }
+                    state.queuedTargetsAll.push(obj);
                 }
                 if (!game.global.settings.qAny) {
                     break;
@@ -9898,12 +9884,7 @@ win.on('close', function() {
                 let id = game.global.r_queue.queue[i].id;
                 let obj = techIds[id];
                 if (obj) {
-                    obj.resourceRequirements.forEach(requirement => {
-                        requirement.resource.storageRequired = Math.max(requirement.quantity*bufferMult, requirement.resource.storageRequired);
-                    });
-                    if (obj.isAffordable(true)) {
-                        state.queuedTargets.push(obj);
-                    }
+                    state.queuedTargetsAll.push(obj);
                 }
                 if (!game.global.settings.qAny_res) {
                     break;
@@ -9911,9 +9892,11 @@ win.on('close', function() {
             }
         }
 
+        state.queuedTarget = state.queuedTargetsAll.filter(obj => obj.isAffordable(true));
         TriggerManager.resetTargetTriggers();
 
         // Active triggers
+        // TODO: Make list of unaffordable triggers, and try to request storage
         for (let i = 0; i < TriggerManager.targetTriggers.length; i++) {
             let trigger = TriggerManager.targetTriggers[i];
             if (trigger.actionType === "research" && techIds[trigger.actionId]) {
@@ -9948,13 +9931,13 @@ win.on('close', function() {
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isPillarUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} pillar already infused, soft resetting and trying again.`);
+                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} pillar already infused, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available pillars already infused. Continuing with current race.`);
+                        GameLog.logWarning(GameLog.Types.special, `All currently available pillars already infused. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
@@ -9962,13 +9945,13 @@ win.on('close', function() {
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isGreatnessAchievementUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`);
+                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} greatness achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available greatness achievements already earned. Continuing with current race.`);
+                        GameLog.logWarning(GameLog.Types.special, `All currently available greatness achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
@@ -9976,18 +9959,18 @@ win.on('close', function() {
                     for (let id in races) {
                         let race = races[id];
                         if (race.getHabitability() > 0 && !race.isMadAchievementUnlocked(stars)) {
-                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`);
+                            GameLog.logWarning(GameLog.Types.special, `${newRace.name} extinction achievement already earned, soft resetting and trying again.`, ['progress', 'achievements']);
                             needReset = true;
                             break;
                         }
                     }
                     if (!needReset) {
-                        GameLog.logWarning(GameLog.Types.special, `All currently available extinction achievements already earned. Continuing with current race.`);
+                        GameLog.logWarning(GameLog.Types.special, `All currently available extinction achievements already earned. Continuing with current race.`, ['progress', 'achievements']);
                     }
                 }
 
             } else if (settings.userEvolutionTarget !== game.global.race.species && races[settings.userEvolutionTarget].getHabitability() > 0) {
-                GameLog.logWarning(GameLog.Types.special, `Wrong race, soft resetting and trying again.`);
+                GameLog.logWarning(GameLog.Types.special, `Wrong race, soft resetting and trying again.`, ['progress']);
                 needReset = true;
             }
 
@@ -10212,7 +10195,7 @@ win.on('close', function() {
 
         // Log filtering
         buildFilterRegExp();
-        new MutationObserver(filterLog).observe(document.getElementById("msgQueue"), {childList: true});
+        new MutationObserver(filterLog).observe(document.getElementById("msgQueueLog"), {childList: true});
     }
 
     function buildFilterRegExp() {
@@ -12335,6 +12318,7 @@ win.on('close', function() {
                             {val: "user", label: "Current design", hint: "Build whatever currently set in Mech Lab"}];
         addSettingsSelect(currentNode, "mechBuild", "Build mechs", "Configures what will be build. Infernal mechs won't ever be build.", buildOptions);
 
+        //TODO: Make auto truly auto - some way to pick best "per x", depends on current bottleneck
         let sizeOptions = [{val: "auto", label: "Damage Per Size", hint: "Select affordable mech with most damage per size on current floor"},
                            {val: "gems", label: "Damage Per Gems", hint: "Select affordable mech with most damage per gems on current floor"},
                            {val: "supply", label: "Damage Per Supply", hint: "Select affordable mech with most damage per supply on current floor"},
