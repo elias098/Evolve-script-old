@@ -8465,8 +8465,13 @@ win.on('close', function() {
                 if (building === buildings.BeltIronShip && !resources.Iron.isUseful()) {
                     maxStateOn = Math.min(maxStateOn, resources.Iron.getBusyWorkers("job_space_miner", currentStateOn));
                 }
-                if (building === buildings.BologniumShip && !resources.Bolognium.isUseful()) {
-                    maxStateOn = Math.min(maxStateOn, resources.Bolognium.getBusyWorkers("galaxy_bolognium_ship", currentStateOn));
+                if (building === buildings.BologniumShip) {
+                    if (buildings.GorddonMission.isAutoBuildable() && buildings.ScoutShip.count >= 2 && buildings.CorvetteShip.count >= 1) {
+                        maxStateOn = resources.Gateway_Support.rateOfChange - 3;
+                    }
+                    if (!resources.Bolognium.isUseful()) {
+                        maxStateOn = Math.min(maxStateOn, resources.Bolognium.getBusyWorkers("galaxy_bolognium_ship", currentStateOn));
+                    }
                 }
                 if (building === buildings.Alien1VitreloyPlant && !resources.Vitreloy.isUseful()) {
                     maxStateOn = Math.min(maxStateOn, resources.Vitreloy.getBusyWorkers("galaxy_vitreloy_plant_bd", currentStateOn));
@@ -9806,6 +9811,11 @@ win.on('close', function() {
                     state.missionBuildingList.splice(i, 1);
                 }
             }
+        }
+
+        // Embassy
+        if (buildings.GorddonEmbassy.isAutoBuildable() && resources.Knowledge.maxQuantity >= settings.fleetEmbassyKnowledge) {
+            prioritizedTasks.push(buildings.GorddonEmbassy);
         }
 
         // Unlocked and affordable techs, and but only if we don't have anything more important
