@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Evolve test
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1.79
+// @version      3.3.1.80
 // @description  try to take over the world!
 // @downloadURL  https://gist.github.com/elias098/cc891c9c4bdc6276a8dfa4d346d92c30/raw/evolve_automation.user.js
 // @author       Fafnir
@@ -2400,7 +2400,7 @@ win.on('close', function() {
           () => settings.buildingWeightingNeedfulPowerPlant
       ],[
           () => resources.Power.isUnlocked() && resources.Power.currentQuantity > resources.Power.maxQuantity,
-          (building) => building !== buildings.Mill && building.powered < 0,
+          (building) => building !== buildings.Mill && (building === buildings.LakeCoolingTower || building.powered < 0),
           () => "No need for more energy",
           () => settings.buildingWeightingUselessPowerPlant
       ],[
@@ -2429,7 +2429,6 @@ win.on('close', function() {
           () => "Still have some unused storage",
           () => settings.buildingWeightingCrateUseless
       ],[
-      // TODO: Fuel rules probably broken, fix me
           () => resources.Oil.maxQuantity < resources.Oil.requestedQuantity && buildings.OilWell.count <= 0 && buildings.GasMoonOilExtractor.count <= 0,
           (building) => building === buildings.OilWell || building === buildings.GasMoonOilExtractor,
           () => "Need more fuel",
@@ -3661,6 +3660,7 @@ win.on('close', function() {
         mechsPower: 0,
         mechsPotential: 0,
         isActive: false,
+        saveSupply: false,
 
         lastLevel: -1,
         lastPrepared: -1,
@@ -4876,7 +4876,7 @@ win.on('close', function() {
         settings.buildingWeightingMADUseless = 0;
         settings.buildingWeightingUnusedEjectors = 0.1;
         settings.buildingWeightingCrateUseless = 0.01;
-        settings.buildingWeightingHorseshoeUseless = 0.01;
+        settings.buildingWeightingHorseshoeUseless = 0.1;
         settings.buildingWeightingZenUseless = 0.01;
         settings.buildingWeightingGateTurret = 0.01;
         settings.buildingWeightingNeedStorage = 1;
@@ -5527,6 +5527,7 @@ win.on('close', function() {
         addSetting("autoGalaxyMarket", false);
 
         addSetting("logEnabled", true);
+        addSetting(GameLog.Types.mercenary.settingKey, false);
         addSetting(GameLog.Types.arpa.settingKey, false);
         Object.values(GameLog.Types).forEach(log => addSetting(log.settingKey, true));
         addSetting("logFilter", "");
@@ -5657,7 +5658,7 @@ win.on('close', function() {
         addSetting("buildingWeightingMADUseless", 0);
         addSetting("buildingWeightingUnusedEjectors", 0.1);
         addSetting("buildingWeightingCrateUseless", 0.01);
-        addSetting("buildingWeightingHorseshoeUseless", 0.01);
+        addSetting("buildingWeightingHorseshoeUseless", 0.1);
         addSetting("buildingWeightingZenUseless", 0.01);
         addSetting("buildingWeightingGateTurret", 0.01);
         addSetting("buildingWeightingNeedStorage", 1);
@@ -5682,8 +5683,8 @@ win.on('close', function() {
         addSetting("fleetChthonianLoses", "frigate");
 
         addSetting("mechScrap", "mixed");
-        addSetting("mechScrapEfficiency", 2);
-        addSetting("mechCollectorValue", 1);
+        addSetting("mechScrapEfficiency", 1.5);
+        addSetting("mechCollectorValue", 0.5);
         addSetting("mechBuild", "random");
         addSetting("mechSize", "titan");
         addSetting("mechSizeGravity", "auto");
@@ -8134,7 +8135,9 @@ win.on('close', function() {
 
             // Build building
             if (building.click()) {
-                if (building.consumption.length > 0) { // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
+                // Only one building with consumption per tick, so we won't build few red buildings having just 1 extra support, and such
+                // Same for gems when we're saving them
+                if (building.consumption.length > 0 || (settings.prestigeWhiteholeSaveGems && settings.prestigeType === "whitehole" && resourceCost(building, resources.Soul_Gem) > 0)) {
                     return;
                 }
                 // Mark all processed building as unaffordable for remaining loop, so they won't appear as conflicting
@@ -8591,21 +8594,28 @@ win.on('close', function() {
             let maxCamps = canBuild(buildings.SpireBaseCamp) ? buildings.SpireBaseCamp.autoMax : buildings.SpireBaseCamp.count;
             let nextMechCost = canBuild(buildings.SpireMechBay, true) ? resourceCost(buildings.SpireMechBay, resources.Supply) : Number.MAX_SAFE_INTEGER;
             let nextPuriCost = canBuild(buildings.SpirePurifier, true) ? resourceCost(buildings.SpirePurifier, resources.Supply) : Number.MAX_SAFE_INTEGER;
-            let nextCost = Math.min(nextMechCost, nextPuriCost);
+            let mechQueued = state.queuedTargetsAll.includes(buildings.SpireMechBay);
+            let puriQueued = state.queuedTargetsAll.includes(buildings.SpirePurifier);
 
             let [bestSupplies, bestPort, bestBase] = getBestSupplyRatio(spireSupport, maxPorts, maxCamps);
             buildings.SpirePurifier.extraDescription = `Supported Supplies: ${Math.floor(bestSupplies)}<br>${buildings.SpirePurifier.extraDescription}`;
 
-            let overCappedSupplies = false;
+            let nextCost =
+              mechQueued && nextMechCost <= bestSupplies ? nextMechCost :
+              puriQueued && nextPuriCost <= bestSupplies ? nextPuriCost :
+              Math.min(nextMechCost, nextPuriCost);
+            MechManager.saveSupply = nextCost <= bestSupplies;
+
+            let assignStorage = mechQueued || puriQueued;
             for (let targetMech = maxBay; targetMech >= 0; targetMech--) {
                 let [targetSupplies, targetPort, targetCamp] = getBestSupplyRatio(spireSupport - targetMech, maxPorts, maxCamps);
 
-                let storageUpgrade =
+                let missingStorage =
                     targetPort > buildings.SpirePort.count ? buildings.SpirePort :
                     targetCamp > buildings.SpireBaseCamp.count ? buildings.SpireBaseCamp :
                     null;
-                if (storageUpgrade) {
-                    let storageCost = resourceCost(storageUpgrade, resources.Supply);
+                if (missingStorage) {
+                    let storageCost = resourceCost(missingStorage, resources.Supply);
                     for (let i = maxBay; i >= 0; i--) {
                         let [storageSupplies, storagePort, storageCamp] = getBestSupplyRatio(spireSupport - i, maxPorts, maxCamps);
                         if (storageSupplies >= storageCost) {
@@ -8617,9 +8627,10 @@ win.on('close', function() {
                 }
 
                 if (targetMech === maxBay && resources.Supply.currentQuantity >= targetSupplies) {
-                    overCappedSupplies = true;
+                    assignStorage = true;
                 }
-                if (!overCappedSupplies || bestSupplies < nextCost || targetSupplies >= nextCost) {
+                if (!assignStorage || bestSupplies < nextCost || targetSupplies >= nextCost) {
+                    // TODO: Assign storage gradually while it fills, instead of dropping directly to target. That'll need better intregration with autoBuild, to make sure it won't spent supplies on wrong building seeing that target still unaffrodable, and not knowing that it's temporaly
                     adjustSpire(targetMech, targetPort, targetCamp);
                     break;
                 }
@@ -9544,6 +9555,8 @@ win.on('close', function() {
         let mechBay = game.global.portal.mechbay;
         let prolongActive = m.isActive;
         m.isActive = false;
+        let savingSupply = m.saveSupply;
+        m.saveSupply = false;
 
         // Rearrange mechs for best efficiency if some of the bays are disabled
         if (m.inactiveMechs.length > 0) {
@@ -9631,7 +9644,7 @@ win.on('close', function() {
 
             // Get list of inefficient mech
             let scrapEfficiency =
-              baySpace === 0 && resources.Supply.storageRatio > 0.9 ? 0 :
+              (settings.mechFillBay ? baySpace === 0 : baySpace < newSpace) && resources.Supply.storageRatio > 0.9 && !savingSupply ? 0 :
               lastFloor ? Math.min(settings.mechScrapEfficiency, 1) :
               settings.mechScrapEfficiency;
 
@@ -9678,7 +9691,7 @@ win.on('close', function() {
         }
 
         // Try to squeeze smaller mech, if we can't fit preferred one
-        if (settings.mechFillBay && ((!canExpandBay && baySpace < newSpace) || resources.Supply.maxQuantity < newSupply)) {
+        if (settings.mechFillBay && !savingSupply &&((!canExpandBay && baySpace < newSpace) || resources.Supply.maxQuantity < newSupply)) {
             for (let i = m.Size.indexOf(newMech.size) - 1; i >= 0; i--) {
                 [newGems, newSupply, newSpace] = m.getMechCost({size: m.Size[i]});
                 if (newSpace <= baySpace && newSupply <= resources.Supply.maxQuantity) {
@@ -9753,6 +9766,7 @@ win.on('close', function() {
     }
 
     function requiestStorageFor(list) {
+        // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
         let bufferMult = settings.storageAssignExtra ? 1.03 : 1;
         for (let i = 0; i < list.length; i++) {
             let obj = list[i];
@@ -9766,17 +9780,14 @@ win.on('close', function() {
     }
 
     function calculateRequiredStorages() {
-        // Get list of all unlocked techs, and find biggest numbers for each resource
-        // Required amount increased by 3% from actual numbers, as other logic of script can and will try to prevent overflowing by selling\ejecting\building projects, and that might cause an issues if we'd need 100% of storage
-        requiestStorageFor(state.techTargets);
-
         // We need to preserve amount of knowledge required by techs only, while amount still not polluted
         // by buildings - wardenclyffe, labs, etc. This way we can determine what's our real demand is.
         // Otherwise they might start build up knowledge cap just to afford themselves, increasing required
         // cap further, so we'll need more labs, and they'll demand even more knowledge for next level and so on.
-        state.knowledgeRequiredByTechs = resources.Knowledge.storageRequired;
+        state.knowledgeRequiredByTechs = Math.max(0, ...state.techTargets.map(tech => resourceCost(tech, resources.Knowledge)));
 
-        // Now we can do same for other things
+        // Get list of all objects techs, and find biggest numbers for each resource
+        requiestStorageFor(state.techTargets);
         requiestStorageFor(state.queuedTargetsAll);
         requiestStorageFor(BuildingManager.priorityList.filter((b) => b.isUnlocked() && b.autoBuildEnabled));
         requiestStorageFor(ProjectManager.priorityList.filter((p) => p.isUnlocked() && p.autoBuildEnabled));
@@ -12441,8 +12452,8 @@ win.on('close', function() {
 
     function resetMechSettings() {
         settings.mechScrap = "mixed";
-        settings.mechScrapEfficiency = 2;
-        settings.mechCollectorValue = 1;
+        settings.mechScrapEfficiency = 1.5;
+        settings.mechCollectorValue = 0.5;
         settings.mechBuild = "random";
         settings.mechSize = "titan";
         settings.mechSizeGravity = "auto";
