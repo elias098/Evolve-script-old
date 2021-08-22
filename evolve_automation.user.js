@@ -9824,11 +9824,6 @@ win.on('close', function() {
             }
         }
 
-        // Embassy
-        if (buildings.GorddonEmbassy.isAutoBuildable() && resources.Knowledge.maxQuantity >= settings.fleetEmbassyKnowledge) {
-            prioritizedTasks.push(buildings.GorddonEmbassy);
-        }
-
         // Unlocked and affordable techs, and but only if we don't have anything more important
         if (prioritizedTasks.length === 0 && (haveTech("mad") ? settings.researchRequestSpace : settings.researchRequest)) {
             prioritizedTasks = state.techTargets.filter(t => t.isAffordable());
@@ -9886,6 +9881,11 @@ win.on('close', function() {
         state.triggerTargets = [];
         state.techTargets = [];
         state.otherTargets = [];
+
+        // Embassy
+        if (buildings.GorddonEmbassy.isAutoBuildable() && resources.Knowledge.maxQuantity >= settings.fleetEmbassyKnowledge) {
+            state.triggerTargets.push(buildings.GorddonEmbassy);
+        }
 
         // Buildings queue
         if (game.global.queue.display) {
