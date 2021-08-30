@@ -416,9 +416,8 @@ win.on('close', function() {
             return this.instance?.display ?? false;
         }
 
-        isMarketUnlocked() {
-            let node = document.getElementById(this._marketVueBinding);
-            return node !== null && node.style.display !== "none";
+        isRoutesUnlocked() {
+            return this.isUnlocked() && ((game.global.race['banana'] && this === resources.Food) || (game.global.tech['trade'] && !game.global.race['terrifying']));
         }
 
         isManagedStorage() {
@@ -9150,7 +9149,7 @@ win.on('close', function() {
 
     function adjustTradeRoutes() {
         let tradableResources = MarketManager.priorityList
-          .filter(r => r.isMarketUnlocked() && (r.autoTradeBuyEnabled || r.autoTradeSellEnabled))
+          .filter(r => r.isRoutesUnlocked() && (r.autoTradeBuyEnabled || r.autoTradeSellEnabled))
           .sort((a, b) => (b.storageRatio > 0.99 ? b.tradeSellPrice * 1000 : b.usefulRatio) - (a.storageRatio > 0.99 ? a.tradeSellPrice * 1000 : a.usefulRatio));
         let requiredTradeRoutes = {};
         let currentMoneyPerSecond = resources.Money.rateOfChange;
@@ -10026,7 +10025,7 @@ win.on('close', function() {
 
     function updateTabs() {
         state.lastShowMarket = game.global.settings.showMarket;
-        state.lastShowRoutes = game.global.city.market.active;
+        state.lastShowRoutes = game.global.tech.trade;
         state.lastShowEjector = game.global.settings.showEjector;
         state.lastShowCargo = game.global.settings.showCargo;
         state.lastHaveCrate = resources.Crates.isUnlocked();
@@ -10060,7 +10059,7 @@ win.on('close', function() {
         // Redraw tabs once they unlocked
         if ((game.global.race['smoldering'] && buildings.RockQuarry.count > 0 && $("#iQuarry").length === 0)
               || state.lastShowMarket !== game.global.settings.showMarket
-              || state.lastShowRoutes !== game.global.city.market.active
+              || state.lastShowRoutes !== game.global.tech.trade
               || state.lastShowEjector !== game.global.settings.showEjector
               || state.lastShowCargo !== game.global.settings.showCargo
               || (!state.lastHaveCrate && resources.Crates.isUnlocked())
@@ -11436,7 +11435,7 @@ win.on('close', function() {
             if (node.id === "popper") {
                 let popperObserver = new MutationObserver((popperMutations) => {
                     // Add tooltips once again when popper cleared
-                    if (popperMutations.some(popperMutation => popperMutation.removedNodes.length > 0)) {
+                    if (!node.querySelector(".script-tooltip")) {
                         popperObserver.disconnect();
                         addTooltip(node);
                         popperObserver.observe(node, {childList: true});
@@ -11450,14 +11449,14 @@ win.on('close', function() {
 
     const infusionStep = {"blood-lust": 15, "blood-illuminate": 12, "blood-greed": 16, "blood-hoarder": 14, "blood-artisan": 8, "blood-attract": 4, "blood-wrath": 2};
     function addTooltip(node) {
+        $(node).append(`<span class="script-tooltip" hidden></span>`);
         let dataId = node.dataset.id;
         // Tooltips for things with no script objects
         if (dataId === 'powerStatus') {
-            node.innerHTML += `<p class="modal_bd"><span>Disabled</span><span class="has-text-danger">${getNiceNumber(resources.Power.maxQuantity)}</span></p>`;
+            $(node).append(`<p class="modal_bd"><span>Disabled</span><span class="has-text-danger">${getNiceNumber(resources.Power.maxQuantity)}</span></p>`);
             return;
         } else if (infusionStep[dataId]) {
-            let BloodStone = game.loc('resource_Blood_Stone_name').replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            node.innerHTML = node.innerHTML.replace(new RegExp(`${BloodStone}: \\d+`), `$& (+${infusionStep[dataId]})`);
+            $(node).find('.costList .res-Blood_Stone').append(` (+${infusionStep[dataId]})`);
             return;
         }
 
@@ -11478,12 +11477,12 @@ win.on('close', function() {
         if (obj === buildings.BlackholeStellarEngine && buildings.BlackholeMassEjector.count > 0 && game.global.interstellar.stellar_engine.exotic < 0.025) {
             let massPerSec = (resources.Elerium.atomicMass * game.global.interstellar.mass_ejector.Elerium + resources.Infernite.atomicMass * game.global.interstellar.mass_ejector.Infernite) || -1;
             let missingExotics = (0.025 - game.global.interstellar.stellar_engine.exotic) * 1e10;
-            node.innerHTML += `<div id="popTimer" class="flair has-text-advanced">Contaminated in [${poly.timeFormat(missingExotics / massPerSec)}]</div>`;
+            $(node).append(`<div id="popTimer" class="flair has-text-advanced">Contaminated in [${poly.timeFormat(missingExotics / massPerSec)}]</div>`);
         }
 
         let description = getTooltipInfo(obj);
         if (description) {
-            node.innerHTML += `<div style="border-top: solid .0625rem #999">${description}</div>`;
+            $(node).append(`<div style="border-top: solid .0625rem #999">${description}</div>`);
         }
     }
 
@@ -13184,7 +13183,7 @@ win.on('close', function() {
         currentNode.empty().off("*");
 
         addSettingsToggle(currentNode, "fleetMaxCover", "Maximize protection of prioritized systems", "Adjusts ships distribution to fully supress piracy in prioritized regions. Some potential defence will be wasted, as it will use big ships to cover small holes, when it doesn't have anything fitting better. This option is not required: all your dreadnoughts still will be used even without this option.");
-        addSettingsNumber(currentNode, "fleetEmbassyKnowledge", "Mininum knowledge for Embassy", "Building Embassy increases maximum piracy up to 100, script won't Auto Build it until this knowledge cap is reached. Note that this option only prevent early autobuilding, and due to huge cost building Embassy will likely take a long even when required knowledge cap is reached. If you're not playing with manual crafting, and not swimming in Wrought Iron - consider building it with queue or trigger instead.");
+        addSettingsNumber(currentNode, "fleetEmbassyKnowledge", "Mininum knowledge for Embassy", "Building Embassy increases maximum piracy up to 100, script won't Auto Build it until this knowledge cap is reached. ");
         addSettingsNumber(currentNode, "fleetAlienGiftKnowledge", "Mininum knowledge for Alien Gift", "Researching Alien Gift increases maximum piracy up to 250, script won't Auto Research it until this knowledge cap is reached.");
         addSettingsNumber(currentNode, "fleetAlien2Knowledge", "Mininum knowledge for Alien 2 Assault", "Assaulting Alien 2 increases maximum piracy up to 500, script won't do it until this knowledge cap is reached. Regardless of set value it won't ever try to assault until you have big enough fleet to do it without loses.");
 
